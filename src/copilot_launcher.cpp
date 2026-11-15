@@ -1,5 +1,7 @@
 #include "copilot_launcher.h"
 
+#include "copilot_initial_prompt.h"
+
 #include "logonomic_cli_addon/launch_preparation.h"
 
 #include <string>
@@ -98,6 +100,10 @@ void prepare(addon::Invocation_context& context)
     addon::Launch_patch patch;
     patch.profile_storage = request->profile_storage;
     patch.account_context = request->account_context;
+    if (request->initial_prompt) {
+        prepare_initial_prompt(*request, std::move(patch), context);
+        return;
+    }
     patch.disposition = addon::Launch_disposition{
         invocation && !invocation->argv.empty() &&
             copilot_program(invocation->argv.front(), request->launch_environment->platform_id),

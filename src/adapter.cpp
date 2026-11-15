@@ -47,6 +47,7 @@ int main()
         {addon::k_presentation_capability_id, addon::k_presentation_version},
         {addon::k_launcher_discovery_capability_id, addon::k_launcher_discovery_version},
         {addon::k_launch_preparation_capability_id, addon::k_launch_preparation_execution_version},
+        {addon::k_interactive_initial_prompt_capability_id, addon::k_interactive_initial_prompt_version},
     };
     addon::Adapter_runtime runtime(std::move(options));
     runtime.set_invoke_handler(invoke);

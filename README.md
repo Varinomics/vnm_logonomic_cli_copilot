@@ -5,9 +5,32 @@ the standalone [GitHub Copilot CLI](https://github.com/github/copilot-cli).
 Install and sign in to Copilot CLI separately; the add-on uses your existing
 `copilot` installation and configuration.
 
-The package supplies launcher discovery, recognition and interactive launch
-preparation. Its capability sidecars are the supported integration contract.
+The package supplies launcher discovery, recognition, interactive launch
+preparation and initial-message delivery for Logonomic continuations. Its
+capability sidecars are the supported integration contract.
 Copilot retains control of authentication, tool permissions and its terminal UI.
+
+## Interactive continuation
+
+For a Logonomic continuation, select a Direct launcher pointing at the native
+Copilot executable. The add-on verifies the installed executable's help for
+interactive-prompt support and supplies the host's first message through
+`--interactive`. It adds `--no-auto-update` for that invocation so Copilot uses
+the exact installed binary that was checked. Existing model, permission and
+configuration arguments retain their values; no additional file or tool
+permissions are granted.
+
+A continuation must start a fresh interactive session. Existing prompts,
+resume/session selectors, commands, agent selection and arguments whose
+first-message behavior is not established make this capability unavailable.
+Input shortcuts and surrounding whitespace are also refused because native
+input handling can interpret or trim them. Shell launchers and script wrappers
+continue to work for ordinary launches; they do not attest initial-message
+delivery. Feature detection does not impose a Copilot version ceiling.
+
+The package does not declare live session identity, idle/turn tracking, history
+resume or conversation export. Copilot can keep several sessions alive in one
+terminal, and its documented hooks do not establish which one is foreground.
 
 ## Build and install
 
