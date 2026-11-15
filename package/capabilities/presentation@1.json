@@ -1,0 +1,9 @@
+{
+  "capability_id": "presentation",
+  "version": 1,
+  "payload": {
+    "display_name": "GitHub Copilot CLI",
+    "icon": {"light": "assets/terminal.svg", "dark": "assets/terminal.svg"},
+    "accent": {"light": "#6e40c9", "dark": "#a371f7"}
+  }
+}

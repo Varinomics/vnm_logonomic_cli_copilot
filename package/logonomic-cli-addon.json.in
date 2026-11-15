@@ -1,0 +1,13 @@
+{
+  "bootstrap_version": 1,
+  "package_id": "logonomic.cli.copilot",
+  "release_version": "1.0.0",
+  "platforms": ["@COPILOT_PLATFORM@"],
+  "adapter": {
+    "path": {"@COPILOT_PLATFORM@": "adapter/copilot_adapter@COPILOT_EXECUTABLE_SUFFIX@"},
+    "argv": [],
+    "environment": {}
+  },
+  "core_protocol_generations": [1],
+  "integrity_index": "package.files.json"
+}
