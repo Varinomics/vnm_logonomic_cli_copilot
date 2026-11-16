@@ -1,5 +1,5 @@
 {
   "capability_id": "delegated-session",
   "version": 3,
-  "payload": {"purposes": ["implementation"], "environment_names": ["COPILOT_HOME"]}
+  "payload": {"purposes": ["implementation"], "environment_names": ["COPILOT_HOME", "COPILOT_PLAN_THEN_AUTOPILOT", "SystemRoot", "WINDIR", "TEMP", "TMP"]}
 }

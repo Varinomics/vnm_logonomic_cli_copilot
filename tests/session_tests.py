@@ -171,6 +171,8 @@ def added_options(prepared, request):
             if not separator:
                 value = next(remaining, None)
             check(value is not None, "injected option has an operand")
+            if option == "--additional-mcp-config" and value.startswith("@"):
+                value = "@" + str(Path(value[1:]))
             options.append((option, value))
     return options
 

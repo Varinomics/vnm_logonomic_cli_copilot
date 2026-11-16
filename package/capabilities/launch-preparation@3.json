@@ -1,5 +1,5 @@
 {
   "capability_id": "launch-preparation",
   "version": 3,
-  "payload": {"environment_names": ["COPILOT_HOME"]}
+  "payload": {"environment_names": ["COPILOT_HOME", "COPILOT_PLAN_THEN_AUTOPILOT", "SystemRoot", "WINDIR", "TEMP", "TMP"]}
 }
