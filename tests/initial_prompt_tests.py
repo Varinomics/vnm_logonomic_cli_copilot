@@ -34,6 +34,58 @@ def refused(adapter, request, label):
     check(result["status"] == "unavailable" and result["reason"] == "initial_prompt_unavailable", label)
 
 
+def mode_admission(adapter, request):
+    # GitHub's CLI command reference documents enabled values and explicit
+    # --mode precedence. Native Copilot 1.0.112 confirms case folding and
+    # ECMAScript trimming (including BOM, excluding NEL) before selection.
+    # https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-command-reference
+    variable = "COPILOT_PLAN_THEN_AUTOPILOT"
+    for value in ("1", "true", "yes", "on", "TRUE", " true ", "\u00a0TrUe\u00a0", "\ufefftrue\ufeff"):
+        enabled = copy.deepcopy(request)
+        enabled["launch_environment"]["effective_environment"][variable] = value
+        refused(adapter, enabled, "environment mode cannot admit an autonomous sequence: " + repr(value))
+
+    for value in ("", "0", "false", "off", "y", "\u0085true\u0085"):
+        disabled = copy.deepcopy(request)
+        disabled["launch_environment"]["effective_environment"][variable] = value
+        patch = successful(adapter.invoke("launch-preparation", 3, "prepare", disabled))
+        check(patch["environment"] == {"set": {}, "unset": []}, "disabled mode environment is preserved")
+
+    enabled = copy.deepcopy(request)
+    enabled["launch_environment"]["effective_environment"][variable] = "true"
+    for arguments in (["--mode", "interactive"], ["--mode=interactive"]):
+        explicit = copy.deepcopy(enabled)
+        explicit["launcher_argv"] += arguments
+        explicit["launcher"]["script_body"] += " " + " ".join(arguments)
+        patch = successful(adapter.invoke("launch-preparation", 3, "prepare", explicit))
+        check(patch["argv"][:-2] == explicit["launcher_argv"], "explicit interactive mode is preserved")
+        check(patch["environment"] == {"set": {}, "unset": []}, "explicit mode does not clear saved environment")
+
+    for arguments in (["--mode", "plan"], ["--mode=autopilot"], ["--name", "interactive"]):
+        invalid = copy.deepcopy(enabled)
+        invalid["launcher_argv"] += arguments
+        invalid["launcher"]["script_body"] += " " + " ".join(arguments)
+        refused(adapter, invalid, "only an explicit interactive mode overrides the environment")
+
+    ordinary = copy.deepcopy(enabled)
+    del ordinary["initial_prompt"]
+    successful(adapter.invoke("launch-preparation", 3, "prepare", ordinary))
+
+    previous = os.environ.get(variable)
+    os.environ[variable] = "true"
+    try:
+        ambient = Adapter(sys.argv[1])
+    finally:
+        if previous is None:
+            del os.environ[variable]
+        else:
+            os.environ[variable] = previous
+    try:
+        successful(ambient.invoke("launch-preparation", 3, "prepare", request))
+    finally:
+        ambient.close()
+
+
 def main():
     adapter = Adapter(sys.argv[1])
     with tempfile.TemporaryDirectory(prefix="copilot-prompt-") as directory:
@@ -54,6 +106,7 @@ def main():
         check(patch["environment"] == {"set": {}, "unset": []}, "no permissions or configuration injected")
         actual = subprocess.run(patch["argv"], capture_output=True, check=True, timeout=5)
         check(json.loads(actual.stdout.decode("utf-8")) == patch["argv"], "native argv receives exact Unicode and quote bytes")
+        mode_admission(adapter, request)
 
         frozen = copy.deepcopy(request)
         frozen["launcher"]["script_body"] += " --no-auto-update"

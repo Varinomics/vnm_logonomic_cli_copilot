@@ -24,7 +24,7 @@ bool contains(const std::string_view (&values)[Size], std::string_view value)
     return std::find(std::begin(values), std::end(values), value) != std::end(values);
 }
 
-bool fresh_interactive_arguments(const std::vector<std::string>& argv)
+bool fresh_interactive_arguments(const std::vector<std::string>& argv, const addon::Environment& environment)
 {
     // These options have documented settings/permission semantics. Unknown
     // options cannot prove a fresh session: a future selector or command may
@@ -48,6 +48,7 @@ bool fresh_interactive_arguments(const std::vector<std::string>& argv)
         "--available-tools", "--excluded-tools", "--secret-env-vars",
     };
 
+    bool explicit_mode = false;
     for (std::size_t index = 1; index < argv.size(); ++index) {
         const std::string_view argument = argv[index];
         const auto equals = argument.find('=');
@@ -69,6 +70,7 @@ bool fresh_interactive_arguments(const std::vector<std::string>& argv)
             if (value.empty() || value.front() == '-' || (option == "--mode" && value != "interactive")) {
                 return false;
             }
+            explicit_mode = explicit_mode || option == "--mode";
             continue;
         }
         if (contains(lists, option)) {
@@ -86,7 +88,8 @@ bool fresh_interactive_arguments(const std::vector<std::string>& argv)
         }
         return false;
     }
-    return true;
+    // Native explicit mode selection takes precedence over the environment.
+    return explicit_mode || !plan_then_autopilot_requested(environment);
 }
 
 bool help_declares(std::string_view help, std::string_view option)
@@ -128,15 +131,15 @@ void prepare_initial_prompt(
     }
     const auto invocation = addon::literal_launcher_invocation(
         request.launcher, request.launch_environment->platform_id, request.launcher_argv);
+    const auto environment = addon::environment_pairs(request.launch_environment->effective_environment);
     if (request.launcher.runner_key != addon::k_runner_direct || !invocation ||
         !launcher_invocation(request.launcher, request.launch_environment->platform_id) ||
-        !fresh_interactive_arguments(invocation->argv))
+        !fresh_interactive_arguments(invocation->argv, environment))
     {
         unavailable(context, "The selected invocation does not establish a fresh Direct Copilot session.");
         return;
     }
 
-    const auto environment = addon::environment_pairs(request.launch_environment->effective_environment);
     const auto program = addon::resolve_program(invocation->argv.front(), environment, request.working_directory);
     if (!program || !addon::native_image(*program)) {
         unavailable(context, "A native Copilot executable is required for first-message delivery.");

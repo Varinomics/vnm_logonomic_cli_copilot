@@ -5,6 +5,7 @@
 #include "logonomic_cli_addon/launch_preparation.h"
 
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -40,6 +41,36 @@ std::optional<addon::Launcher_invocation> launcher_invocation(
         return std::nullopt;
     }
     return invocation;
+}
+
+bool plan_then_autopilot_requested(const addon::Environment& environment)
+{
+    const auto stored = addon::environment_value(environment, "COPILOT_PLAN_THEN_AUTOPILOT");
+    std::string_view value = stored;
+    // Copilot trims ECMAScript whitespace, which includes BOM but excludes
+    // NEL. The SDK's launcher-whitespace grammar has different boundaries.
+    static constexpr std::string_view whitespace[]{
+        "\t", "\n", "\v", "\f", "\r", " ", "\u00A0", "\u1680",
+        "\u2000", "\u2001", "\u2002", "\u2003", "\u2004", "\u2005",
+        "\u2006", "\u2007", "\u2008", "\u2009", "\u200A", "\u2028",
+        "\u2029", "\u202F", "\u205F", "\u3000", "\uFEFF",
+    };
+    for (;;) {
+        const auto previous_size = value.size();
+        for (const auto space : whitespace) {
+            if (value.starts_with(space)) {
+                value.remove_prefix(space.size());
+            }
+            if (value.ends_with(space)) {
+                value.remove_suffix(space.size());
+            }
+        }
+        if (value.size() == previous_size) {
+            break;
+        }
+    }
+    const auto normalized = addon::lower(std::string(value));
+    return normalized == "1" || normalized == "true" || normalized == "yes" || normalized == "on";
 }
 
 void discover(addon::Invocation_context& context)

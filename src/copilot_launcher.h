@@ -13,6 +13,8 @@ std::optional<logonomic::cli_addon::Launcher_invocation> launcher_invocation(
     const logonomic::cli_addon::Launcher_request& launcher,
     std::string_view platform);
 
+bool plan_then_autopilot_requested(const logonomic::cli_addon::Environment& environment);
+
 void discover(logonomic::cli_addon::Invocation_context& context);
 void recognize(logonomic::cli_addon::Invocation_context& context);
 void prepare(logonomic::cli_addon::Invocation_context& context);
