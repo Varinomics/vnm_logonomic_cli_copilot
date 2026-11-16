@@ -32,6 +32,11 @@ int run(const std::vector<std::string>& arguments)
         if (mode != "missing") {
             std::cout << "  -i, --interactive <prompt>\n";
         }
+        if (mode != "session-missing") {
+            std::cout << "  --session-id <id>\n";
+        }
+        std::cout << "  --output-format <format>\n  --stream <mode>\n"
+                     "  --additional-mcp-config <json>\n  --allow-tool [<tools>...]\n";
         return 0;
     }
     addon::Json_value result = addon::Json_value::array();

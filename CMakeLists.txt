@@ -42,7 +42,7 @@ function(copilot_target target)
     endif()
 endfunction()
 
-add_library(copilot_provider STATIC src/copilot_launcher.cpp src/copilot_initial_prompt.cpp)
+add_library(copilot_provider STATIC src/copilot_launcher.cpp src/copilot_initial_prompt.cpp src/copilot_session.cpp)
 target_include_directories(copilot_provider PUBLIC src)
 target_link_libraries(copilot_provider PUBLIC logonomic_cli_addon_sdk::sdk)
 copilot_target(copilot_provider)
@@ -77,5 +77,9 @@ add_test(NAME copilot_launcher_protocol COMMAND "${Python3_EXECUTABLE}" -B
 add_test(NAME copilot_initial_prompt_protocol COMMAND "${Python3_EXECUTABLE}" -B
     "${CMAKE_CURRENT_SOURCE_DIR}/tests/initial_prompt_tests.py"
     "$<TARGET_FILE:copilot_adapter>" "$<TARGET_FILE:copilot_native_fixture>" "${COPILOT_PLATFORM}")
-set_tests_properties(copilot_package_validation copilot_package_conformance copilot_launcher_protocol copilot_initial_prompt_protocol
+add_test(NAME copilot_session_protocol COMMAND "${Python3_EXECUTABLE}" -B
+    "${CMAKE_CURRENT_SOURCE_DIR}/tests/session_tests.py"
+    "$<TARGET_FILE:copilot_adapter>" "$<TARGET_FILE:copilot_native_fixture>" "${COPILOT_PLATFORM}")
+set_tests_properties(copilot_package_validation copilot_package_conformance copilot_launcher_protocol
+    copilot_initial_prompt_protocol copilot_session_protocol
     PROPERTIES TIMEOUT 60 LABELS "cli-addon;provider-contract")

@@ -6,7 +6,7 @@ Install and sign in to Copilot CLI separately; the add-on uses your existing
 `copilot` installation and configuration.
 
 The package supplies launcher discovery, recognition, interactive launch
-preparation and initial-message delivery for Logonomic continuations. Its
+preparation, initial-message delivery and delegated implementation tasks. Its
 capability sidecars are the supported integration contract.
 Copilot retains control of authentication, tool permissions and its terminal UI.
 
@@ -27,6 +27,46 @@ Input shortcuts and surrounding whitespace are also refused because native
 input handling can interpret or trim them. Shell launchers and script wrappers
 continue to work for ordinary launches; they do not attest initial-message
 delivery. Feature detection does not impose a Copilot version ceiling.
+
+## Implementation tasks
+
+Save a Direct launcher pointing at the native Copilot executable. From a live
+Logonomic session, use the host-provided command to list eligible targets:
+
+```sh
+"$LOGONOMIC_VNMCTL_PATH" delegate targets
+```
+
+Use the exact target ID for the saved Copilot launcher. From the checkout where
+the task should run, supply its prompt through stdin:
+
+```sh
+"$LOGONOMIC_VNMCTL_PATH" delegate run --title 'Fix parser boundary handling' \
+  --target TARGET_ID < task-prompt.txt
+```
+
+The add-on starts a fresh native Copilot session with the exact text prompt on
+stdin. It preserves saved model settings, tool permissions, path and URL rules,
+and compatible configuration arguments. Logonomic's requested coordination and
+delegation actions are attached through its task-server relay, with narrow native
+allow rules for those actions. Saved deny rules still take precedence. The add-on
+does not grant additional shell, file or URL access.
+
+The installed executable must advertise the native session, JSON output, stream
+and MCP configuration options. Each task disables automatic binary updates so
+the probed executable supplies the session protocol. The selected launcher must
+not contain another prompt, resume selector, custom agent, autonomous mode,
+working-directory override, or tool/MCP selector that could hide task actions.
+Unrecognized options make task preparation unavailable. Native slash-command
+prompts are also refused because programmatic Copilot can route them as commands.
+
+Task completion requires the requested session and exact prompt acknowledgment,
+complete root assistant output, ready task-server catalogs, a successful native
+terminal result and process exit zero. Native errors, missing task tools,
+malformed or truncated output, incomplete response fragments and exceeded
+exchange bounds fail the task. Copilot authentication and saved configuration
+remain native; this package does not add account selection, review tasks or
+per-task model overrides.
 
 The package does not declare live session identity, idle/turn tracking, history
 resume or conversation export. Copilot can keep several sessions alive in one

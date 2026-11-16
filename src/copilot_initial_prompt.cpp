@@ -92,26 +92,6 @@ bool fresh_interactive_arguments(const std::vector<std::string>& argv, const add
     return explicit_mode || !plan_then_autopilot_requested(environment);
 }
 
-bool help_declares(std::string_view help, std::string_view option)
-{
-    while (!help.empty()) {
-        const auto end = help.find('\n');
-        const auto line = addon::trim(help.substr(0, end), addon::Launcher_whitespace::ASCII);
-        const auto position = line.find(option);
-        if (line.starts_with('-') && position != std::string::npos &&
-            (position == 0 || line[position - 1] == ' ' || line[position - 1] == ',') &&
-            (position + option.size() == line.size() || line[position + option.size()] == ' '))
-        {
-            return true;
-        }
-        if (end == std::string_view::npos) {
-            break;
-        }
-        help.remove_prefix(end + 1);
-    }
-    return false;
-}
-
 void unavailable(addon::Invocation_context& context, std::string detail)
 {
     context.fail(addon::Result_status::UNAVAILABLE, addon::reason::k_initial_prompt_unavailable, std::move(detail));

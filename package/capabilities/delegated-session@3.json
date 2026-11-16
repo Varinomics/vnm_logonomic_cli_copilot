@@ -1,0 +1,5 @@
+{
+  "capability_id": "delegated-session",
+  "version": 3,
+  "payload": {"purposes": ["implementation"], "environment_names": ["COPILOT_HOME"]}
+}
