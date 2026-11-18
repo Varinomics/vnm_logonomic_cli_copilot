@@ -34,25 +34,43 @@ def main():
         script = candidate["script_body"]
         program = Path(script[1:-1])
         check(script[0] == script[-1] == '"' and program.is_absolute() and program.is_file(), "usable saved path")
-        if os.name != "nt" and npm_bin.name == ".bin":
-            # npm's installed native export can be linked into a replaceable
-            # backing directory. A saved launcher must follow the export.
-            modules = Path(directory) / "linked install" / "node_modules"
+        if npm_bin.name == ".bin":
+            workspace = Path(directory) / "linked install"
+            modules = workspace / "packages" / "nested" / "node_modules"
             wrapper = modules / "@github" / "copilot"
             wrapper.mkdir(parents=True)
             for name in ("npm-loader.js", "package.json"):
                 shutil.copyfile(npm_bin.parent / "@github" / "copilot" / name, wrapper / name)
             (wrapper / "npm-loader.js").chmod(0o755)
             (modules / ".bin").mkdir()
-            (modules / ".bin" / "copilot").symlink_to("../@github/copilot/npm-loader.js")
-            exported = modules / "@github" / program.parent.name
-            exported.symlink_to(program.parent, target_is_directory=True)
-            linked = successful(adapter.invoke("launcher-discovery", 1, "discover", {
+            if os.name == "nt":
+                shutil.copyfile(npm_bin / "copilot.cmd", modules / ".bin" / "copilot.cmd")
+            else:
+                (modules / ".bin" / "copilot").symlink_to("../@github/copilot/npm-loader.js")
+            exported = workspace / "node_modules" / "@github" / program.parent.name
+            exported.parent.mkdir(parents=True)
+            if os.name == "nt":
+                exported.mkdir()
+                shutil.copyfile(program.parent / "package.json", exported / "package.json")
+                try:
+                    os.link(program, exported / program.name)
+                except OSError:
+                    shutil.copyfile(program, exported / program.name)
+            else:
+                exported.symlink_to(program.parent, target_is_directory=True)
+            discover = {
                 "ambient_environment": {"PATH": str(modules / ".bin")},
                 "default_home_fallback": directory, "platform": platform,
-            }))["candidates"][0]
+            }
+            linked = successful(adapter.invoke("launcher-discovery", 1, "discover", discover))["candidates"][0]
             check(linked["script_body"] == '"' + str(exported / program.name) + '"',
-                  "launcher retains the stable native package export")
+                  "launcher retains the stable native export of a hoisted workspace package")
+            # A nearer package shadows the outer one even if we cannot attest it.
+            nearer = modules / "@github" / program.parent.name
+            nearer.mkdir()
+            (nearer / "package.json").write_text('{"name":"different"}', encoding="utf-8")
+            blocked = successful(adapter.invoke("launcher-discovery", 1, "discover", discover))["candidates"][0]
+            check(blocked["runner_key"] != "direct", "an unrecognized nearer dependency preserves the shell runner")
         saved = launcher(script)
         interactive = prompt_request(program, directory, platform)
         structured = task_request(program, directory, platform)

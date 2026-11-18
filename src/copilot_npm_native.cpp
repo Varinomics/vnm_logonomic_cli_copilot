@@ -50,10 +50,15 @@ std::optional<fs::path> native_dependency(
     if (required.empty() || required != member(&wrapper, "version")) {
         return std::nullopt;
     }
-    // Node checks nested dependencies before the hoisted node_modules.
-    for (const fs::path& root : {package / "node_modules", package.parent_path() / "node_modules",
-                                package.parent_path().parent_path()}) {
-        const auto directory = root / "@github" / name;
+    // Node checks each containing node_modules from nearest to farthest.
+    // Workspace installations can hoist a dependency above the wrapper's project.
+    for (auto ancestor = package; !ancestor.empty();) {
+        const auto directory = ancestor / "node_modules" / "@github" / name;
+        const bool skip = ancestor.filename() == "node_modules";
+        ancestor = ancestor == ancestor.root_path() ? fs::path{} : ancestor.parent_path();
+        if (skip) {
+            continue;
+        }
         std::error_code error;
         if (!fs::exists(directory, error) && !error) {
             continue;
