@@ -3,9 +3,11 @@
 #include <algorithm>
 #include <array>
 #include <cerrno>
+#include <cstdint>
 #include <cstdio>
 #include <memory>
 #include <stdexcept>
+#include <utility>
 
 #ifdef _WIN32
 #include <windows.h>
@@ -20,11 +22,15 @@
 namespace copilot {
 namespace {
 namespace fs = std::filesystem;
-using File = std::unique_ptr<std::FILE, decltype(&std::fclose)>;
+struct Close_file
+{
+    void operator()(std::FILE* file) const { std::fclose(file); }
+};
+using File = std::unique_ptr<std::FILE, Close_file>;
 
 struct Captured_file
 {
-    File stream{nullptr, &std::fclose};
+    File stream;
     std::uint64_t bytes = 0;
 };
 
@@ -71,7 +77,7 @@ Captured_file capture(const fs::path& profile, const std::string& session)
     const auto fd = _open_osfhandle(reinterpret_cast<intptr_t>(handle.get()), _O_BINARY | _O_RDONLY);
     if (fd == -1) throw std::runtime_error("Copilot journal descriptor unavailable");
     handle.release();
-    File file(_fdopen(fd, "rb"), &std::fclose);
+    File file(_fdopen(fd, "rb"));
     if (!file) {
         _close(fd);
         throw std::runtime_error("Copilot journal stream unavailable");
@@ -105,7 +111,7 @@ Captured_file capture(const fs::path& profile, const std::string& session)
     if (fstat(descriptor.value, &status) || !S_ISREG(status.st_mode) || status.st_size < 0) {
         throw std::runtime_error("Copilot journal is not a regular file");
     }
-    File file(fdopen(descriptor.value, "rb"), &std::fclose);
+    File file(fdopen(descriptor.value, "rb"));
     if (!file) throw std::runtime_error("Copilot journal stream unavailable");
     descriptor.value = -1;
     return {std::move(file), static_cast<std::uint64_t>(status.st_size)};
