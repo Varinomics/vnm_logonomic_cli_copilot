@@ -266,19 +266,30 @@ void accounts(addon::Invocation_context& context)
     context.succeed(addon::encode_accounts({{key, addon::account_display_name(text), availability(*path), text}}));
 }
 
+std::optional<fs::path> selected_profile_path(
+    const std::optional<addon::Account_context>& account,
+    const addon::Launcher_request& launcher, const addon::Launch_environment& environment,
+    const std::optional<addon::Launcher_invocation>& invocation, std::string_view working_directory)
+{
+    const auto path = profile_path(launcher, environment, invocation, working_directory, {});
+    if (!account) {
+        return path;
+    }
+    if (path && profile_key(*path) == account->adapter_account_key &&
+        (account->version == 1 || (account->profile_path &&
+            addon::same_native_account_profile(addon::path_from_utf8(*account->profile_path), *path))))
+    {
+        return path;
+    }
+    return std::nullopt;
+}
+
 bool accept_account(
     addon::Invocation_context& context, const std::optional<addon::Account_context>& account,
     const addon::Launcher_request& launcher, const addon::Launch_environment& environment,
     const std::optional<addon::Launcher_invocation>& invocation, std::string_view working_directory)
 {
-    if (!account) {
-        return true;
-    }
-    const auto path = profile_path(launcher, environment, invocation, working_directory, {});
-    if (path && profile_key(*path) == account->adapter_account_key &&
-        (account->version == 1 || (account->profile_path &&
-            addon::same_native_account_profile(addon::path_from_utf8(*account->profile_path), *path))))
-    {
+    if (!account || selected_profile_path(account, launcher, environment, invocation, working_directory)) {
         return true;
     }
     context.fail(addon::Result_status::UNAVAILABLE, "account_profile_mismatch",

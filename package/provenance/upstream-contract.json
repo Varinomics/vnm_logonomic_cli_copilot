@@ -9,6 +9,7 @@
   ],
   "integration": {
     "launcher": "The standalone copilot executable, including the native platform dependency exported by the official npm installation.",
-    "configuration": "Copilot owns authentication and permissions. Ordinary launches preserve their settings. Managed prompts and tasks prepare a native invocation from the effective launcher settings."
+    "configuration": "Copilot owns authentication and permissions. Ordinary launches preserve their settings. Managed prompts and tasks prepare a native invocation from the effective launcher settings.",
+    "usage": "Copilot CLI 1.0.114 session-events.schema.json defines session.usage_record, the source session accounting sequence and the durable event UUID. The bundled SDK sessions.fork operation preserves the accounting receipt in the new journal."
   }
 }

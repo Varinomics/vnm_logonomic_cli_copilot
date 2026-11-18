@@ -83,6 +83,20 @@ observation receive the serving model reported by a root native assistant
 message. Copilot retains control of authentication. Delegated tasks use the
 implementation purpose.
 
+Historical token usage comes from durable `session.usage_record` entries in
+the selected profile's `session-state/<uuid>/events.jsonl` journals. Each
+measured call contributes its native input and output once, including across
+forks and repeated scans. The breakdown includes reported cache details and
+the provider's response model when available. A copied receipt retains its
+cross-profile identity. Separate calls in profiles that reuse a session UUID
+retain distinct event identities.
+
+Scans report limited historical coverage because older sessions and model
+backends may lack measured receipts. A sealed, host-selected snapshot retains
+previously accepted calls when native journals disappear. Reset reconstructs
+from the current profile. Each scan reads the newline-terminated prefix of
+each journal, including journals open for writing.
+
 The package does not declare live session identity, idle/turn tracking, history
 resume or conversation export. Copilot can keep several sessions alive in one
 terminal, and its documented hooks do not establish which one is foreground.

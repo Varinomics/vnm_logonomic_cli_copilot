@@ -1,4 +1,5 @@
 #include "copilot_accounts.h"
+#include "copilot_usage.h"
 #include "copilot_launcher.h"
 #include "copilot_session.h"
 
@@ -17,6 +18,16 @@ namespace addon = logonomic::cli_addon;
 void invoke(addon::Invocation_context& context)
 {
     const auto& request = context.request();
+    if (request.capability.capability_id == addon::k_profile_storage_capability_id &&
+        request.operation == addon::k_profile_storage_acknowledge)
+    {
+        addon::acknowledge_profile_storage(context);
+        return;
+    }
+    if (request.capability.capability_id == addon::k_usage_scan_capability_id) {
+        copilot::scan_usage(context);
+        return;
+    }
     if (request.capability.capability_id == addon::k_accounts_capability_id) {
         copilot::accounts(context);
         return;
@@ -72,6 +83,9 @@ int main()
     options.capabilities = {
         {addon::k_presentation_capability_id, addon::k_presentation_version},
         {addon::k_accounts_capability_id, addon::k_accounts_launcher_version},
+        {addon::k_profile_storage_capability_id, addon::k_profile_storage_version},
+        {addon::k_usage_scan_capability_id, addon::k_usage_scan_acceptance_version},
+        {"usage-cross-source-event", 1},
         {addon::k_launcher_discovery_capability_id, addon::k_launcher_discovery_version},
         {addon::k_launch_preparation_capability_id, addon::k_launch_preparation_execution_version},
         {addon::k_interactive_initial_prompt_capability_id, addon::k_interactive_initial_prompt_version},

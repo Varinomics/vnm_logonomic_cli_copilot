@@ -44,7 +44,7 @@ endfunction()
 
 add_library(copilot_provider STATIC
     src/copilot_accounts.cpp src/copilot_launcher.cpp src/copilot_initial_prompt.cpp
-    src/copilot_npm_native.cpp src/copilot_session.cpp)
+    src/copilot_npm_native.cpp src/copilot_session.cpp src/copilot_usage.cpp src/copilot_usage_journal.cpp)
 if(WIN32)
     target_link_libraries(copilot_provider PRIVATE shell32 ole32 uuid)
 endif()
@@ -88,6 +88,9 @@ add_test(NAME copilot_session_protocol COMMAND "${Python3_EXECUTABLE}" -B
 add_test(NAME copilot_accounts_protocol COMMAND "${Python3_EXECUTABLE}" -B
     "${CMAKE_CURRENT_SOURCE_DIR}/tests/accounts_tests.py"
     "$<TARGET_FILE:copilot_adapter>" "$<TARGET_FILE:copilot_native_fixture>" "${COPILOT_PLATFORM}")
-set_tests_properties(copilot_accounts_protocol copilot_package_validation copilot_package_conformance copilot_launcher_protocol
+add_test(NAME copilot_usage_protocol COMMAND "${Python3_EXECUTABLE}" -B
+    "${CMAKE_CURRENT_SOURCE_DIR}/tests/usage_tests.py"
+    "$<TARGET_FILE:copilot_adapter>" "$<TARGET_FILE:copilot_native_fixture>" "${COPILOT_PLATFORM}")
+set_tests_properties(copilot_usage_protocol copilot_accounts_protocol copilot_package_validation copilot_package_conformance copilot_launcher_protocol
     copilot_initial_prompt_protocol copilot_session_protocol
     PROPERTIES TIMEOUT 60 LABELS "cli-addon;provider-contract")
