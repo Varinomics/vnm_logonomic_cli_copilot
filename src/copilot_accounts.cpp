@@ -200,30 +200,14 @@ std::optional<fs::path> profile_path(
 
 std::string profile_key(const fs::path& profile)
 {
-    auto path = profile;
-#ifdef _WIN32
-    const auto& native = path.native();
-    const auto length = static_cast<int>(native.size());
-    const auto count = LCMapStringEx(LOCALE_NAME_INVARIANT, LCMAP_LOWERCASE, native.data(), length,
-        nullptr, 0, nullptr, nullptr, 0);
-    if (count == 0) {
-        return {};
-    }
-    std::wstring folded(static_cast<std::size_t>(count), L'\0');
-    if (!LCMapStringEx(LOCALE_NAME_INVARIANT, LCMAP_LOWERCASE, native.data(), length,
-            folded.data(), count, nullptr, nullptr, 0))
-    {
-        return {};
-    }
-    path = fs::path(folded);
-#endif
-    return "profile-" + addon::to_hex(addon::Sha256::digest(addon::path_to_utf8(path)));
+    const auto identity = addon::native_account_profile_identity(profile);
+    return identity ? "profile-" + addon::to_hex(addon::Sha256::digest(*identity)) : std::string{};
 }
 
 addon::Account_status availability(const fs::path& profile)
 {
     std::error_code error;
-    const auto status = fs::status(profile, error);
+    const auto status = fs::status(profile_io_path(profile), error);
     if (error == std::errc::no_such_file_or_directory || error == std::errc::not_a_directory) {
         return addon::Account_status::UNAVAILABLE;
     }
@@ -234,6 +218,19 @@ addon::Account_status availability(const fs::path& profile)
 }
 
 } // namespace
+
+std::filesystem::path profile_io_path(const std::filesystem::path& profile)
+{
+#ifdef _WIN32
+    const auto spelling = fs::path(profile).make_preferred().native();
+    if (spelling.starts_with(L"\\\\?\\") || spelling.starts_with(L"\\\\.\\")) {
+        return spelling;
+    }
+    return spelling.starts_with(L"\\\\") ? L"\\\\?\\UNC\\" + spelling.substr(2) : L"\\\\?\\" + spelling;
+#else
+    return profile;
+#endif
+}
 
 void accounts(addon::Invocation_context& context)
 {
@@ -279,7 +276,8 @@ bool accept_account(
     }
     const auto path = profile_path(launcher, environment, invocation, working_directory, {});
     if (path && profile_key(*path) == account->adapter_account_key &&
-        (account->version == 1 || account->profile_path == addon::path_to_utf8(*path)))
+        (account->version == 1 || (account->profile_path &&
+            addon::same_native_account_profile(addon::path_from_utf8(*account->profile_path), *path))))
     {
         return true;
     }

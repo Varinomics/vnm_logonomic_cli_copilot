@@ -6,6 +6,8 @@
 
 namespace copilot {
 
+std::filesystem::path profile_io_path(const std::filesystem::path& profile);
+
 void accounts(logonomic::cli_addon::Invocation_context& context);
 
 bool accept_account(

@@ -5,6 +5,7 @@ writer against the discovered paths, entirely in temporary profiles.
 """
 
 import copy
+import hashlib
 import os
 from pathlib import Path
 import shutil
@@ -141,6 +142,55 @@ def selected_preparation(adapter, program, directory, platform):
         check(rejected["status"] == "unavailable", "a valid key cannot attest the wrong retained path")
 
 
+def windows_profile_spelling(adapter, program, directory, platform):
+    source = initial_request(program, str(directory), platform)
+    source.pop("initial_prompt")
+    environment = source["launch_environment"]["effective_environment"]
+    plain = directory / "spelling"
+    spaced = directory / "spelling "
+    exact = "\\\\?\\" + str(spaced)
+    os.mkdir(exact)
+    try:
+        environment["COPILOT_HOME"] = str(spaced)
+        available = profile(adapter, source, directory)
+        check(available["status"] == "available" and available["profile_path"] == str(spaced),
+              "the exact spaced directory is available")
+        environment["COPILOT_HOME"] = str(plain)
+        check(profile(adapter, source, directory)["status"] == "unavailable", "unspaced directory is absent")
+    finally:
+        os.rmdir(exact)
+    plain.mkdir()
+    environment["COPILOT_HOME"] = str(spaced)
+    check(profile(adapter, source, directory)["status"] == "unavailable", "an unspaced sibling cannot supply availability")
+
+    sensitive = directory / "case-sensitive"
+    sensitive.mkdir()
+    enabled = subprocess.run(["fsutil", "file", "setCaseSensitiveInfo", str(sensitive), "enable"], capture_output=True)
+    if enabled.returncode:
+        print("SKIP per-directory case mode unavailable on the temporary volume")
+        return
+    keys = set()
+    for name in ("Work", "work"):
+        selected = sensitive / name
+        selected.mkdir()
+        environment["COPILOT_HOME"] = str(selected)
+        account = profile(adapter, source, directory)
+        keys.add(account["adapter_account_key"])
+        legacy = "profile-" + hashlib.sha256(str(selected).lower().encode()).hexdigest()
+        check(account["adapter_account_key"] != legacy, "a previously aliased key cannot select either spelling")
+        retained = copy.deepcopy(source)
+        retained["account_context"] = {"version": 1, "adapter_account_key": legacy}
+        rejected = adapter.invoke("launch-preparation", 3, "prepare", retained)
+        check(rejected.get("reason") == "account_profile_mismatch", "legacy folded authority is refused")
+        retained["account_context"] = {
+            "version": 2, "adapter_account_key": account["adapter_account_key"],
+            "profile_path": str(sensitive / name.swapcase()),
+        }
+        rejected = adapter.invoke("launch-preparation", 3, "prepare", retained)
+        check(rejected.get("reason") == "account_profile_mismatch", "a different case-sensitive path cannot reuse a grant")
+    check(len(keys) == 2, "case-sensitive profile siblings have distinct native identities")
+
+
 def main():
     adapter = Adapter(sys.argv[1])
     try:
@@ -150,6 +200,8 @@ def main():
             shutil.copy2(sys.argv[2], program)
             source_routes(adapter, program, directory, sys.argv[3])
             selected_preparation(adapter, program, directory, sys.argv[3])
+            if os.name == "nt":
+                windows_profile_spelling(adapter, program, directory, sys.argv[3])
         if len(sys.argv) == 5:
             with tempfile.TemporaryDirectory(prefix="copilot-native-profiles-") as temporary:
                 source_routes(adapter, Path(sys.argv[4]).resolve(), Path(temporary), sys.argv[3], native=True)
