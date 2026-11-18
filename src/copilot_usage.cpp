@@ -336,11 +336,13 @@ void scan(const addon::Usage_scan_request& request, addon::Invocation_context& c
     const auto profile = selected_profile_path(launch.account_context, launch.launcher, environment, invocation,
         launch.working_directory);
     require(profile.has_value(), "usage_profile_unavailable");
-    const auto history = profile_io_path(*profile) / "session-state";
+    const auto history = *profile / "session-state";
     const auto contains = [](const fs::path& parent, fs::path child) {
-        if (!fs::exists(parent)) return false;
+        const auto parent_io = profile_io_path(parent);
+        if (!fs::exists(parent_io)) return false;
         for (;;) {
-            if (fs::exists(child) && fs::equivalent(parent, child)) return true;
+            const auto child_io = profile_io_path(child);
+            if (fs::exists(child_io) && fs::equivalent(parent_io, child_io)) return true;
             if (child == child.root_path()) return false;
             child = child.parent_path();
         }
