@@ -208,15 +208,18 @@ def prepared_session(prepared, request, extras=()):
     return session_id
 
 
-def inspect(adapter, state, stdout=b"", final=True, exit_code=0, timed_out=False, stderr=b""):
-    reply = adapter.invoke("structured-session", 3, "inspect", {
+def inspect(adapter, state, stdout=b"", final=True, exit_code=0, timed_out=False, stderr=b"", model_version=None):
+    request = {
         "purpose": "implementation",
         "inspection": {
             "protocol_state_base64_chunks": state, "stdout_base64_chunks": chunks(stdout),
             "stderr_base64_chunks": chunks(stderr), "final": final,
             "timed_out": timed_out, "exit_code": exit_code,
         },
-    })
+    }
+    if model_version is not None:
+        request["model_state"] = {"version": model_version}
+    reply = adapter.invoke("structured-session", 3, "inspect", request)
     result = successful(reply)
     check(len(json_bytes(result)) <= EXCHANGE_BYTES, "inspection output respects the aggregate SDK bound")
     continuation = unchunks(result["protocol_state_base64_chunks"])
@@ -317,15 +320,28 @@ def preparation_tests(adapter, request, program, directory):
     set_arguments(wrapped, [str(wrapper)])
     refused(adapter, wrapped, "script wrapper is not a native Copilot image")
 
-    for prompt in (b"", b" \t\n", b"/review", b" \n/review fix this", b"invalid\xff", b"text\0text"):
+    for prompt in (b"", b" \t\n", b"/review", b" \n/review fix this", "\ufeff/help".encode(),
+                   b"invalid\xff", b"text\0text"):
         invalid = copy.deepcopy(request)
         invalid["prompt_base64"] = encoded(prompt)
         reply = adapter.invoke("structured-session", 3, "prepare", invalid)
         check(reply["status"] in ("unavailable", "error"), "unsupported native prompt is refused")
-    for prompt in ("!echo is literal programmatic input", "--help is literal programmatic input"):
+    for prompt in ("!echo is literal programmatic input", "--help is literal programmatic input", "\u0085/help"):
         literal = copy.deepcopy(request)
         literal["prompt_base64"] = encoded(prompt.encode("utf-8"))
         prepared_session(prepare(adapter, literal), literal)
+
+    # Native Copilot decodes stdin as UTF-8 and consumes one leading signature.
+    # The logical host prompt still includes every literal U+FEFF.
+    for prompt in ("\ufeffImplement this", "\ufeff\ufeffImplement this"):
+        literal = copy.deepcopy(request)
+        literal["prompt_base64"] = encoded(prompt.encode("utf-8"))
+        result = prepare(adapter, literal)
+        check(result["process"]["stdin_payload"].encode("utf-8").decode("utf-8-sig") == prompt,
+              "Copilot's stdin decoder preserves the exact logical prompt")
+        literal_session_id = next(value for option, value in added_options(result, literal) if option == "--session-id")
+        transcript = json_lines(native_records(literal_session_id, prompt=prompt))
+        expect_answer(inspect(adapter, initial_state(result), transcript), ANSWER, "native acknowledgment")
 
     maximum = copy.deepcopy(request)
     maximum["prompt_base64"] = encoded(b"p" * (48 * 1024))
@@ -361,6 +377,40 @@ def mode_preparation_tests(adapter, request, directory):
 
 def stream_tests(adapter, prepared, session_id):
     records = native_records(session_id)
+    check("model_state" not in inspect(adapter, initial_state(prepared), json_lines(records)),
+          "model information requires host opt-in")
+    observed = copy.deepcopy(records)
+    observed[2]["data"]["model"] = "native-response-model"
+    nested = copy.deepcopy(observed[2])
+    nested["agentId"] = "child"
+    nested["data"]["model"] = "child-model"
+    observed.insert(-1, nested)
+    preview = inspect(adapter, initial_state(prepared), json_lines(observed[:-1]), final=False, model_version=1)
+    check(preview["model_state"]["observation"] == {
+        "model": "native-response-model", "source": "assistant.message",
+    }, "only a correlated root answer identifies the model that served the operation")
+    complete = inspect(adapter, preview["protocol_state_base64_chunks"], json_lines(observed[-1:]), model_version=1)
+    expect_answer(complete, ANSWER, "model observation preserves incremental completion")
+    check("model_state" not in complete, "no new model evidence in a result-only inspection")
+
+    sibling = copy.deepcopy(observed[2])
+    sibling["data"].update(messageId="another-message", apiCallId="another-api-call", model={})
+    with_sibling = [*observed[:-1], sibling, observed[-1]]
+    result = inspect(adapter, initial_state(prepared), json_lines(with_sibling), model_version=1)
+    expect_answer(result, ANSWER, "malformed optional metadata preserves the task result")
+    check(result["model_state"] == preview["model_state"], "malformed sibling cannot withdraw confirmed evidence")
+    for trailing, timeout in ((b"", False), (b"INVALID", True)):
+        failed = inspect(adapter, initial_state(prepared), json_lines(observed) + trailing,
+                         exit_code=32, timed_out=timeout, model_version=1)
+        check(failed["failure_reason"] == ("copilot_timeout" if timeout else "copilot_process_failed"),
+              "final process status retains precedence over a malformed tail")
+        check(failed["model_state"] == preview["model_state"], "final failure preserves the observed serving model")
+
+    for version, label in ((1, {}), (2, "native-response-model")):
+        observed[2]["data"]["model"] = label
+        result = inspect(adapter, initial_state(prepared), json_lines(observed), model_version=version)
+        expect_answer(result, ANSWER, "malformed or unsupported optional model metadata preserves completion")
+        check("failure" in result["model_state"], "optional model metadata failure is scoped")
     data = json_lines(records)
     expect_answer(inspect(adapter, initial_state(prepared), data), ANSWER, "native complete response")
     expect_answer(inspect(adapter, initial_state(prepared), data[:-1]), ANSWER, "valid final JSON tail")
@@ -508,6 +558,31 @@ def response_chunk_tests(adapter, prepared, session_id):
 def delegated_preparation_tests(adapter, request, directory):
     delegated = delegated_request(request, directory)
     prepared = prepare(adapter, delegated, "delegated-session")
+    check("model_selection" not in prepared, "the saved launcher has no per-task overrides")
+    for settings in ({"model": "selected-model"}, {"reasoning_effort": "low"},
+                     {"model": "selected-model", "reasoning_effort": "low"}):
+        selected = copy.deepcopy(delegated)
+        selected["model_selection"] = {"version": 1, **settings}
+        result = prepare(adapter, selected, "delegated-session")
+        arguments = result["process"]["argv"]
+        check(result["model_selection"] == selected["model_selection"], "exact selection acknowledgment")
+        check(("--model=selected-model" in arguments) == ("model" in settings), "task-local model")
+        check(("fixture-model" in arguments) == ("model" not in settings), "unselected model is retained")
+        effort = settings.get("reasoning_effort", "high")
+        check("--reasoning-effort=" + effort in arguments and "--deny-tool" in arguments, "effort and permissions")
+    plain = copy.deepcopy(delegated)
+    set_arguments(plain, [request["launcher_argv"][0]])
+    plain["model_selection"] = {"version": 1, "model": "future-model", "reasoning_effort": "medium"}
+    arguments = prepare(adapter, plain, "delegated-session")["process"]["argv"]
+    check("--model=future-model" in arguments and "--reasoning-effort=medium" in arguments,
+          "both settings can override environment or account defaults")
+    missing_options = (("no-model", "model", "selected-model", "model_selection_unavailable"),
+                       ("no-effort", "reasoning_effort", "low", "reasoning_effort_unavailable"))
+    for mode, key, value, reason in missing_options:
+        selected = copy.deepcopy(delegated)
+        selected["model_selection"] = {"version": 1, key: value}
+        selected["launch_environment"]["effective_environment"]["COPILOT_FIXTURE_MODE"] = mode
+        refused(adapter, selected, "native selection option is required", "delegated-session", reason)
     control = delegated["control"]
     acknowledgment = prepared["acknowledgment"]
     check(set(acknowledgment) == {"version", "server_ids", "connection"} and

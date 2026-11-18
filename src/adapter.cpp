@@ -1,3 +1,4 @@
+#include "copilot_accounts.h"
 #include "copilot_launcher.h"
 #include "copilot_session.h"
 
@@ -16,6 +17,10 @@ namespace addon = logonomic::cli_addon;
 void invoke(addon::Invocation_context& context)
 {
     const auto& request = context.request();
+    if (request.capability.capability_id == addon::k_accounts_capability_id) {
+        copilot::accounts(context);
+        return;
+    }
     if (request.capability.capability_id == addon::k_launcher_discovery_capability_id) {
         if (request.operation == addon::k_discover_operation) {
             copilot::discover(context);
@@ -66,11 +71,14 @@ int main()
     options.adapter_version = "1.0.0";
     options.capabilities = {
         {addon::k_presentation_capability_id, addon::k_presentation_version},
+        {addon::k_accounts_capability_id, addon::k_accounts_launcher_version},
         {addon::k_launcher_discovery_capability_id, addon::k_launcher_discovery_version},
         {addon::k_launch_preparation_capability_id, addon::k_launch_preparation_execution_version},
         {addon::k_interactive_initial_prompt_capability_id, addon::k_interactive_initial_prompt_version},
         {addon::k_structured_session_capability_id, addon::k_structured_session_version},
         {addon::k_delegated_session_capability_id, addon::k_delegated_session_version},
+        {addon::k_delegated_model_selection_capability_id, addon::k_delegated_model_selection_version},
+        {"structured-model-observation", addon::k_model_state_version},
     };
     addon::Adapter_runtime runtime(std::move(options));
     runtime.set_invoke_handler(invoke);

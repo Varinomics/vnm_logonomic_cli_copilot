@@ -6,9 +6,19 @@ Install and sign in to Copilot CLI separately; the add-on uses your existing
 `copilot` installation and configuration.
 
 The package supplies launcher discovery, recognition, interactive launch
-preparation, initial-message delivery and delegated implementation tasks. Its
+preparation, source profiles, initial-message delivery and delegated implementation tasks. Its
 capability sidecars are the supported integration contract.
 Copilot retains control of authentication, tool permissions and its terminal UI.
+
+## Copilot profiles
+
+Logonomic identifies the Copilot configuration and session directory selected
+by a saved launcher. Copilot defaults to `~/.copilot`. Set `COPILOT_HOME` in
+the launcher environment to select another profile, or retain a saved
+`--config-dir` argument. The argument takes precedence. Task and interactive
+preparation check the selected directory before acknowledging the account.
+Copilot manages sign-in and credentials independently of this profile, and
+`COPILOT_CACHE_HOME` selects its separate runtime cache.
 
 ## Interactive continuation
 
@@ -30,7 +40,9 @@ delivery. Feature detection does not impose a Copilot version ceiling.
 
 ## Implementation tasks
 
-Save a Direct launcher pointing at the native Copilot executable. From a live
+Save a Direct launcher pointing at the native Copilot executable. Discovery
+also finds the platform binary of supported npm installations and saves its
+stable package path. Custom wrappers keep their existing shell runner. From a live
 Logonomic session, use the host-provided command to list eligible targets:
 
 ```sh
@@ -45,9 +57,11 @@ the task should run, supply its prompt through stdin:
   --target TARGET_ID < task-prompt.txt
 ```
 
-The add-on starts a fresh native Copilot session with the exact text prompt on
-stdin. It preserves saved model settings, tool permissions, path and URL rules,
-and compatible configuration arguments. Logonomic's requested coordination and
+The add-on starts a fresh native Copilot session with the task prompt on stdin.
+A per-task model or reasoning-effort selection overrides the corresponding
+saved setting for that invocation. Other model settings, tool permissions,
+path and URL rules, and compatible configuration arguments carry through.
+Logonomic's requested coordination and
 delegation actions are attached through its task-server relay, with narrow native
 allow rules for those actions. Saved deny rules still take precedence. The add-on
 does not grant additional shell, file or URL access.
@@ -64,9 +78,10 @@ Task completion requires the requested session and exact prompt acknowledgment,
 complete root assistant output, ready task-server catalogs, a successful native
 terminal result and process exit zero. Native errors, missing task tools,
 malformed or truncated output, incomplete response fragments and exceeded
-exchange bounds fail the task. Copilot authentication and saved configuration
-remain native; this package does not add account selection, review tasks or
-per-task model overrides.
+exchange bounds fail the task. Hosts that negotiate structured model
+observation receive the serving model reported by a root native assistant
+message. Copilot retains control of authentication. Delegated tasks use the
+implementation purpose.
 
 The package does not declare live session identity, idle/turn tracking, history
 resume or conversation export. Copilot can keep several sessions alive in one
@@ -91,6 +106,13 @@ Without the source override, CMake fetches the SDK from Logonomic's `master`
 branch, which requires access to that repository. The SDK is a standalone
 standard-library implementation; building this add-on does not build Qt or the
 desktop application.
+
+With the official npm package installed, exercise its normal discovery and
+native preparation using the npm bin directory containing the Copilot shim:
+
+```sh
+python tests/npm_discovery_tests.py /path/to/copilot_adapter linux-x86_64 /path/to/node_modules/.bin
+```
 
 The exported `logonomic.cli.copilot` directory is the complete package. Install
 it through Logonomic's CLI add-on package flow, or put it beneath a configured

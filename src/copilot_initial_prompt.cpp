@@ -38,7 +38,7 @@ bool fresh_interactive_arguments(const std::vector<std::string>& argv, const add
         "--no-eager-powershell-resolution", "--no-mouse", "--screen-reader", "--yolo",
     };
     static constexpr std::string_view operands[]{
-        "--model", "--context", "--reasoning-effort", "--name", "-n", "-C",
+        "--model", "--context", "--reasoning-effort", "--name", "-n", "-C", "--config-dir",
         "--log-dir", "--log-level", "--add-dir", "--plugin-dir", "--additional-mcp-config",
         "--add-github-mcp-tool", "--add-github-mcp-toolset", "--disable-mcp-server",
         "--enable-mcp-server", "--mcp-github-auth", "--max-ai-credits", "--usage-output-file",
@@ -66,6 +66,9 @@ bool fresh_interactive_arguments(const std::vector<std::string>& argv, const add
                     return false;
                 }
                 value = argv[index];
+            }
+            if (option == "--config-dir" && equals != std::string_view::npos) {
+                continue;
             }
             if (value.empty() || value.front() == '-' || (option == "--mode" && value != "interactive")) {
                 return false;
@@ -103,8 +106,9 @@ void prepare_initial_prompt(
     const addon::Prepare_request& request, addon::Launch_patch patch, addon::Invocation_context& context)
 {
     const auto& prompt = request.initial_prompt->text;
-    if (addon::trim(prompt) != prompt || prompt.starts_with('/') || prompt.starts_with('!') ||
-        prompt == "$" || prompt == "?")
+    static constexpr std::string_view shortcuts[]{"$", "?", "help", "quit", "exit", "exit print"};
+    if (trim_native_whitespace(prompt) != prompt || prompt.starts_with('/') || prompt.starts_with('!') ||
+        contains(shortcuts, addon::lower(prompt)))
     {
         unavailable(context, "Copilot input shortcuts and surrounding whitespace cannot carry a verbatim first message.");
         return;
@@ -145,9 +149,7 @@ void prepare_initial_prompt(
         return;
     }
 
-    const auto help = addon::probe(
-        {addon::path_to_utf8(*program), "--no-auto-update", "--help"}, environment,
-        request.working_directory, 5000, context);
+    const auto help = probe_help(addon::path_to_utf8(*program), environment, request.working_directory, context);
     if (context.cancel_requested()) {
         context.fail(addon::Result_status::CANCELLED, "cancelled");
         return;

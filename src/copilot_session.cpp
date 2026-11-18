@@ -1,12 +1,15 @@
 #include "copilot_session.h"
 
+#include "copilot_accounts.h"
 #include "copilot_launcher.h"
 
+#include "logonomic_cli_addon/capability_ids.h"
 #include "logonomic_cli_addon/package_source.h"
 #include "logonomic_cli_addon/session_contracts.h"
 #include "logonomic_cli_addon/sha256.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <iterator>
 #include <optional>
@@ -127,7 +130,7 @@ bool fresh_session_arguments(const std::vector<std::string>& argv, const addon::
         "--no-eager-powershell-resolution", "--no-mouse", "--screen-reader", "--yolo",
     };
     static constexpr std::string_view operands[]{
-        "--model", "--context", "--reasoning-effort", "--name", "-n", "--log-dir", "--log-level",
+        "--model", "--context", "--reasoning-effort", "--name", "-n", "--config-dir", "--log-dir", "--log-level",
         "--add-dir", "--plugin-dir", "--additional-mcp-config", "--add-github-mcp-tool",
         "--add-github-mcp-toolset", "--mcp-github-auth", "--max-ai-credits", "--usage-output-file",
     };
@@ -152,6 +155,9 @@ bool fresh_session_arguments(const std::vector<std::string>& argv, const addon::
                     return false;
                 }
                 value = argv[index];
+            }
+            if (option == "--config-dir" && equals != std::string_view::npos) {
+                continue;
             }
             if (value.empty() || value.front() == '-' || (option == "--mode" && value != "interactive")) {
                 return false;
@@ -298,7 +304,7 @@ std::optional<Session_state> decode_state(std::string_view bytes)
 std::optional<Prepared_session> prepare_session(
     const addon::Session_launch_context& launch, std::string_view prompt, addon::Invocation_context& context)
 {
-    const auto trimmed_prompt = addon::trim(prompt);
+    const auto trimmed_prompt = trim_native_whitespace(prompt);
     if (trimmed_prompt.empty() || trimmed_prompt.starts_with('/') ||
         prompt.find('\0') != std::string_view::npos || !addon::is_valid_utf8(prompt))
     {
@@ -313,6 +319,11 @@ std::optional<Prepared_session> prepare_session(
         !fresh_session_arguments(invocation->argv, environment))
     {
         unavailable(context, "The selected invocation does not establish a fresh Direct Copilot task.");
+        return std::nullopt;
+    }
+    if (!accept_account(context, launch.account_context, launch.launcher, *launch.launch_environment,
+            invocation, launch.working_directory))
+    {
         return std::nullopt;
     }
     Prepared_session prepared;
@@ -337,7 +348,12 @@ std::optional<Prepared_session> prepare_session(
     process.argv.emplace_back("--output-format=json");
     process.argv.emplace_back("--stream=off");
     process.stdin_behavior = addon::Stdin_behavior::PAYLOAD;
-    process.stdin_payload = prompt;
+    // Copilot's UTF-8 stdin decoder consumes one initial byte-order mark.
+    // Supply the encoding signature when the text itself starts with U+FEFF.
+    if (prompt.starts_with("\uFEFF")) {
+        process.stdin_payload = "\uFEFF";
+    }
+    process.stdin_payload.append(prompt);
     for (const auto& [name, value] : prepared.environment) {
         static_cast<void>(value);
         process.environment_names.push_back(name);
@@ -347,11 +363,9 @@ std::optional<Prepared_session> prepare_session(
 
 bool native_features(
     const Prepared_session& prepared, const addon::Session_launch_context& launch, bool delegated,
-    addon::Invocation_context& context)
+    addon::Invocation_context& context, const std::optional<addon::Delegated_model_selection>& selection = std::nullopt)
 {
-    const auto help = addon::probe(
-        {prepared.program, "--no-auto-update", "--help"}, prepared.environment,
-        launch.working_directory, 5000, context);
+    const auto help = probe_help(prepared.program, prepared.environment, launch.working_directory, context);
     if (context.cancel_requested()) {
         context.fail(addon::Result_status::CANCELLED, "cancelled");
         return false;
@@ -364,7 +378,33 @@ bool native_features(
         unavailable(context, "The installed Copilot did not establish native task protocol support.");
         return false;
     }
+    if (selection && selection->model && !help_declares(help->output, "--model")) {
+        context.fail(addon::Result_status::UNAVAILABLE, addon::reason::k_model_selection_unavailable);
+        return false;
+    }
+    if (selection && selection->reasoning_effort && !help_declares(help->output, "--reasoning-effort")) {
+        context.fail(addon::Result_status::UNAVAILABLE, addon::reason::k_reasoning_effort_unavailable);
+        return false;
+    }
     return true;
+}
+
+void set_task_option(std::vector<std::string>& argv, std::string_view option, const std::string& value)
+{
+    // Copilot reads the last occurrence. An attached operand keeps values
+    // starting with '-' literal without increasing the size of the saved argv.
+    const std::string prefix = std::string(option) + '=';
+    for (std::size_t index = argv.size(); index > 0; --index) {
+        auto& argument = argv[index - 1];
+        if (argument == option || argument.starts_with(prefix)) {
+            if (argument == option) {
+                argv.erase(argv.begin() + static_cast<std::ptrdiff_t>(index));
+            }
+            argument = prefix + value;
+            return;
+        }
+    }
+    argv.push_back(prefix + value);
 }
 
 bool native_identifier(std::string_view value)
@@ -578,7 +618,8 @@ std::string inspect_answer(Session_state& state, const addon::Json_value& data)
     return {};
 }
 
-std::string inspect_line(Session_state& state, std::string_view line)
+std::string inspect_line(
+    Session_state& state, std::string_view line, bool observe_model, addon::Structured_inspect_result& result)
 {
     addon::Json_parse_limits limits;
     limits.max_bytes = k_stream_limit;
@@ -657,7 +698,19 @@ std::string inspect_line(Session_state& state, std::string_view line)
         if (!state.started) {
             return "copilot_session_mismatch";
         }
-        return inspect_answer(state, *data);
+        const auto failure = inspect_answer(state, *data);
+        if (failure.empty() && observe_model && data->find("model")) {
+            const auto* model = string_member(*data, "model");
+            if (model && addon::is_valid_model_label(*model)) {
+                result.model_observation = addon::Structured_model_observation{"", *model, "assistant.message"};
+                result.model_failure.reset();
+            }
+            else
+            if (!result.model_observation) {
+                result.model_failure = addon::Contract_failure{"invalid_model_observation", "Invalid Copilot model label."};
+            }
+        }
+        return failure;
     }
     else
     if (*type == "session.mcp_servers_loaded" || *type == "session.mcp_server_status_changed" ||
@@ -672,12 +725,31 @@ std::string inspect_line(Session_state& state, std::string_view line)
     return {};
 }
 
-void inspected_failure(addon::Invocation_context& context, std::string reason)
+std::string inspect_output(
+    Session_state& state, const addon::Structured_inspection& inspection,
+    bool observe_model, addon::Structured_inspect_result& result)
 {
-    addon::Structured_inspect_result result;
-    result.complete = true;
-    result.failure_reason = std::move(reason);
-    context.succeed(addon::encode_structured_inspect_result(result));
+    std::string_view input = inspection.stdout_bytes;
+    while (!input.empty()) {
+        const auto newline = input.find('\n');
+        const auto segment = input.substr(0, newline);
+        if (segment.size() > k_stream_limit - state.tail.size()) {
+            return "copilot_output_too_large";
+        }
+        state.tail.append(segment);
+        if (newline == std::string_view::npos) {
+            break;
+        }
+        if (auto reason = inspect_line(state, state.tail, observe_model, result); !reason.empty()) {
+            return reason;
+        }
+        state.tail.clear();
+        input.remove_prefix(newline + 1);
+    }
+    if (inspection.final && !state.tail.empty()) {
+        return inspect_line(state, state.tail, observe_model, result);
+    }
+    return {};
 }
 
 } // namespace
@@ -725,8 +797,9 @@ void prepare_delegated(addon::Invocation_context& context)
     if (!implementation(request->purpose, context)) {
         return;
     }
+    static constexpr addon::Delegated_model_selection_declaration selection_support{true, true};
     if (request->model_selection &&
-        !addon::validate_delegated_model_selection(*request->model_selection, nullptr, &failure))
+        !addon::validate_delegated_model_selection(*request->model_selection, &selection_support, &failure))
     {
         context.fail(addon::Result_status::UNAVAILABLE, failure.reason_code, failure.detail);
         return;
@@ -738,6 +811,16 @@ void prepare_delegated(addon::Invocation_context& context)
     addon::Delegated_prepare_result result;
     if (!attach_servers(request->control, *prepared, result, context)) {
         return;
+    }
+    if (request->model_selection) {
+        const auto& selection = *request->model_selection;
+        if (selection.model) {
+            set_task_option(prepared->process.argv, "--model", *selection.model);
+        }
+        if (selection.reasoning_effort) {
+            set_task_option(prepared->process.argv, "--reasoning-effort", *selection.reasoning_effort);
+        }
+        result.model_selection = selection;
     }
     result.process = prepared->process;
     result.inspection = {true, encode_state(prepared->state), false};
@@ -752,7 +835,7 @@ void prepare_delegated(addon::Invocation_context& context)
         context.fail(addon::Result_status::UNAVAILABLE, failure.reason_code, failure.detail);
         return;
     }
-    if (native_features(*prepared, request->context, true, context)) {
+    if (native_features(*prepared, request->context, true, context, request->model_selection)) {
         context.succeed(payload);
     }
 }
@@ -768,49 +851,44 @@ void inspect_session(addon::Invocation_context& context)
     if (!implementation(request->purpose, context)) {
         return;
     }
+    addon::Structured_inspect_result result;
+    result.model_failure = request->model_failure;
+    const bool observe_model = request->model_state_version == addon::k_model_state_version;
+    const auto fail = [&](std::string reason) {
+        addon::Structured_inspect_result failed;
+        failed.complete = true;
+        failed.failure_reason = std::move(reason);
+        failed.model_observation = std::move(result.model_observation);
+        failed.model_failure = std::move(result.model_failure);
+        context.succeed(addon::encode_structured_inspect_result(failed));
+    };
     auto state = decode_state(request->inspection.protocol_state);
     if (!state) {
-        inspected_failure(context, "copilot_state_invalid");
+        fail("copilot_state_invalid");
         return;
     }
     const auto& inspection = request->inspection;
-    if (inspection.final && (inspection.timed_out || inspection.exit_code != 0)) {
-        inspected_failure(context, inspection.timed_out ? "copilot_timeout" : "copilot_process_failed");
+    const bool process_failed = inspection.final && (inspection.timed_out || inspection.exit_code != 0);
+    // Final stdout can contain the operation's last confirmed model even
+    // when a later native error or process exit makes the task fail.
+    std::string output_failure;
+    if (!process_failed || observe_model) {
+        output_failure = inspect_output(*state, inspection, observe_model, result);
+    }
+    if (process_failed) {
+        fail(inspection.timed_out ? "copilot_timeout" : "copilot_process_failed");
         return;
     }
-    std::string_view input = inspection.stdout_bytes;
-    while (!input.empty()) {
-        const auto newline = input.find('\n');
-        const auto segment = input.substr(0, newline);
-        if (segment.size() > k_stream_limit - state->tail.size()) {
-            inspected_failure(context, "copilot_output_too_large");
-            return;
-        }
-        state->tail.append(segment);
-        if (newline == std::string_view::npos) {
-            break;
-        }
-        if (auto reason = inspect_line(*state, state->tail); !reason.empty()) {
-            inspected_failure(context, std::move(reason));
-            return;
-        }
-        state->tail.clear();
-        input.remove_prefix(newline + 1);
+    if (!output_failure.empty()) {
+        fail(std::move(output_failure));
+        return;
     }
-    if (inspection.final && !state->tail.empty()) {
-        if (auto reason = inspect_line(*state, state->tail); !reason.empty()) {
-            inspected_failure(context, std::move(reason));
-            return;
-        }
-        state->tail.clear();
-    }
-    addon::Structured_inspect_result result;
     result.complete = inspection.final;
     if (inspection.final) {
         if (!state->started || state->prompt_id.empty() || !state->answer_ready || !state->result_seen ||
             state->chunk_count != 0 || !all_servers_ready(*state))
         {
-            inspected_failure(context, "copilot_result_incomplete");
+            fail("copilot_result_incomplete");
             return;
         }
         result.result_bytes = std::move(state->answer);
@@ -818,13 +896,13 @@ void inspect_session(addon::Invocation_context& context)
     else {
         result.protocol_state = encode_state(*state);
         if (!addon::exchange_protocol_state_valid(result.protocol_state)) {
-            inspected_failure(context, "copilot_state_too_large");
+            fail("copilot_state_too_large");
             return;
         }
     }
     const auto payload = addon::encode_structured_inspect_result(result);
     if (!addon::validate_session_exchange_payload(payload, &failure)) {
-        inspected_failure(context, "copilot_result_too_large");
+        fail("copilot_result_too_large");
         return;
     }
     context.succeed(payload);

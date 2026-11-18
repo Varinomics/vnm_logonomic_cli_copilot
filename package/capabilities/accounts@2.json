@@ -1,0 +1,5 @@
+{
+  "capability_id": "accounts",
+  "version": 2,
+  "payload": {"environment_names": ["COPILOT_HOME", "NoDefaultCurrentDirectoryInExePath"]}
+}

@@ -42,13 +42,13 @@ class Adapter:
         check(line.endswith(b"\n") and not line.endswith(b"\r\n"), "wire frame uses LF")
         return json.loads(line.decode("utf-8"))
 
-    def invoke(self, capability, version, operation, payload):
+    def invoke(self, capability, version, operation, payload, deadline_ms=5000):
         self.request_number += 1
         request_id = f"r{self.request_number}"
         self.send({
             "type": "invoke", "request_id": request_id,
             "capability_id": capability, "version": version,
-            "operation": operation, "payload": payload, "deadline_ms": 5000,
+            "operation": operation, "payload": payload, "deadline_ms": deadline_ms,
         })
         while True:
             reply = self.receive()

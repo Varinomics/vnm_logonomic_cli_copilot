@@ -108,13 +108,17 @@ def main():
         check(json.loads(actual.stdout.decode("utf-8")) == patch["argv"], "native argv receives exact Unicode and quote bytes")
         mode_admission(adapter, request)
 
+        cold = copy.deepcopy(request)
+        cold["launch_environment"]["effective_environment"]["COPILOT_FIXTURE_MODE"] = "cold"
+        successful(adapter.invoke("launch-preparation", 3, "prepare", cold, deadline_ms=15000))
+
         frozen = copy.deepcopy(request)
         frozen["launcher"]["script_body"] += " --no-auto-update"
         frozen["launcher_argv"].append("--no-auto-update")
         already_frozen = successful(adapter.invoke("launch-preparation", 3, "prepare", frozen))
         check(already_frozen["argv"].count("--no-auto-update") == 1, "existing binary selection is not duplicated")
 
-        for text in ("--help", "- bullet", "--"):
+        for text in ("--help", "- bullet", "--", "help with this", "\u0085hello\u0085"):
             option_like = copy.deepcopy(request)
             option_like["initial_prompt"]["text"] = text
             rendered = successful(adapter.invoke("launch-preparation", 3, "prepare", option_like))
@@ -127,7 +131,8 @@ def main():
             invalid["launcher_argv"] = [str(program)] + arguments
             refused(adapter, invalid, "ambiguous first-message semantics: " + arguments[0])
 
-        for text in (" leading", "trailing ", "\u00a0leading", "/help", "!echo changed", "$", "?"):
+        for text in (" leading", "trailing ", "\u00a0leading", "\ufeffleading", "trailing\ufeff",
+                     "/help", "!echo changed", "$", "?", "HELP", "quit", "Exit", "eXit PrInt"):
             invalid = copy.deepcopy(request)
             invalid["initial_prompt"]["text"] = text
             refused(adapter, invalid, "input shortcut or trimming refused")

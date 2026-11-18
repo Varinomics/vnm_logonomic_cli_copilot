@@ -21,6 +21,9 @@ int run(const std::vector<std::string>& arguments)
         if (mode == "slow") {
             std::this_thread::sleep_for(std::chrono::seconds(20));
         }
+        if (mode == "cold") {
+            std::this_thread::sleep_for(std::chrono::milliseconds(5500));
+        }
         if (mode == "fail") {
             return 2;
         }
@@ -34,6 +37,12 @@ int run(const std::vector<std::string>& arguments)
         }
         if (mode != "session-missing") {
             std::cout << "  --session-id <id>\n";
+        }
+        if (mode != "no-model") {
+            std::cout << "  --model <model>\n";
+        }
+        if (mode != "no-effort") {
+            std::cout << "  --reasoning-effort <level>\n";
         }
         std::cout << "  --output-format <format>\n  --stream <mode>\n"
                      "  --additional-mcp-config <json>\n  --allow-tool [<tools>...]\n";

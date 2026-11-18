@@ -5,6 +5,7 @@
 #include "logonomic_cli_addon/launcher_utilities.h"
 
 #include <optional>
+#include <string>
 #include <string_view>
 
 namespace copilot {
@@ -14,6 +15,12 @@ std::optional<logonomic::cli_addon::Launcher_invocation> launcher_invocation(
     std::string_view platform);
 
 bool help_declares(std::string_view help, std::string_view option);
+
+std::optional<logonomic::cli_addon::Probe_output> probe_help(
+    const std::string& program, const logonomic::cli_addon::Environment& environment,
+    std::string_view working_directory, logonomic::cli_addon::Invocation_context& context);
+
+std::string_view trim_native_whitespace(std::string_view value);
 
 bool plan_then_autopilot_requested(const logonomic::cli_addon::Environment& environment);
 

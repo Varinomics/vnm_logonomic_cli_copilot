@@ -1,9 +1,14 @@
 #include "copilot_launcher.h"
 
+#include "copilot_accounts.h"
 #include "copilot_initial_prompt.h"
+#include "copilot_npm_native.h"
 
 #include "logonomic_cli_addon/launch_preparation.h"
+#include "logonomic_cli_addon/package_source.h"
 
+#include <algorithm>
+#include <cstdint>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -43,10 +48,8 @@ std::optional<addon::Launcher_invocation> launcher_invocation(
     return invocation;
 }
 
-bool plan_then_autopilot_requested(const addon::Environment& environment)
+std::string_view trim_native_whitespace(std::string_view value)
 {
-    const auto stored = addon::environment_value(environment, "COPILOT_PLAN_THEN_AUTOPILOT");
-    std::string_view value = stored;
     // Copilot trims ECMAScript whitespace, which includes BOM but excludes
     // NEL. The SDK's launcher-whitespace grammar has different boundaries.
     static constexpr std::string_view whitespace[]{
@@ -66,10 +69,15 @@ bool plan_then_autopilot_requested(const addon::Environment& environment)
             }
         }
         if (value.size() == previous_size) {
-            break;
+            return value;
         }
     }
-    const auto normalized = addon::lower(std::string(value));
+}
+
+bool plan_then_autopilot_requested(const addon::Environment& environment)
+{
+    const auto stored = addon::environment_value(environment, "COPILOT_PLAN_THEN_AUTOPILOT");
+    const auto normalized = addon::lower(std::string(trim_native_whitespace(stored)));
     return normalized == "1" || normalized == "true" || normalized == "yes" || normalized == "on";
 }
 
@@ -93,6 +101,17 @@ bool help_declares(std::string_view help, std::string_view option)
     return false;
 }
 
+std::optional<addon::Probe_output> probe_help(
+    const std::string& program, const addon::Environment& environment,
+    std::string_view working_directory, addon::Invocation_context& context)
+{
+    // An installed Copilot extracts its runtime before handling --help on first use.
+    const auto timeout = std::min<std::int64_t>(
+        context.request().deadline_ms, addon::limits::k_launch_prepare_deadline_ms);
+    return addon::probe({program, "--no-auto-update", "--help"}, environment,
+        working_directory, static_cast<int>(timeout), context);
+}
+
 void discover(addon::Invocation_context& context)
 {
     addon::Contract_failure failure;
@@ -114,6 +133,21 @@ void discover(addon::Invocation_context& context)
             *program, request->platform_id.starts_with("windows-") ? addon::k_runner_cmd : addon::k_runner_bash);
         candidate.is_default = true;
         candidate.evidence.set("source", addon::Json_value("path"));
+        if (candidate.runner_key != addon::k_runner_direct) {
+            if (const auto native = npm_native_program(*program)) {
+                const auto path = addon::path_to_utf8(*native);
+                // This text is saved as a Direct launcher and must round-trip
+                // to exactly one path. Keep the shell launcher otherwise.
+                const auto script = "\"" + path + "\"";
+                if (script.size() <= addon::limits::k_max_script_body_bytes && path.find_first_of("\"\r\n") == path.npos &&
+                    addon::literal_argv(script) == std::vector<std::string>{path})
+                {
+                    candidate.script_body = script;
+                    candidate.runner_key = addon::k_runner_direct;
+                    candidate.evidence.set("source", addon::Json_value("npm-native-package"));
+                }
+            }
+        }
         candidates.push_back(std::move(candidate));
     }
     context.succeed(addon::encode_candidates(candidates));
@@ -148,6 +182,11 @@ void prepare(addon::Invocation_context& context)
 
     const auto invocation = addon::literal_launcher_invocation(
         request->launcher, request->launch_environment->platform_id, request->launcher_argv);
+    if (!accept_account(context, request->account_context, request->launcher, *request->launch_environment,
+            invocation, request->working_directory))
+    {
+        return;
+    }
     addon::Launch_patch patch;
     patch.profile_storage = request->profile_storage;
     patch.account_context = request->account_context;

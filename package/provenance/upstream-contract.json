@@ -3,10 +3,12 @@
   "executable": "copilot",
   "sources": [
     "https://github.com/github/copilot-cli",
-    "https://docs.github.com/en/copilot/how-tos/copilot-cli/cli-getting-started"
+    "https://docs.github.com/en/copilot/how-tos/copilot-cli/cli-getting-started",
+    "https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-command-reference",
+    "https://registry.npmjs.org/@github/copilot/1.0.114"
   ],
   "integration": {
-    "launcher": "The standalone copilot executable; authentication and permissions remain owned by Copilot.",
-    "configuration": "User-selected launcher arguments and environment remain unchanged."
+    "launcher": "The standalone copilot executable, including the native platform dependency exported by the official npm installation.",
+    "configuration": "Copilot owns authentication and permissions. Ordinary launches preserve their settings. Managed prompts and tasks prepare a native invocation from the effective launcher settings."
   }
 }
