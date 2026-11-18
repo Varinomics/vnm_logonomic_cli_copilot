@@ -140,4 +140,3 @@ std::optional<Native_help> native_help(
 }
 
 } // namespace copilot
-
