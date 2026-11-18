@@ -44,7 +44,7 @@ endfunction()
 
 add_library(copilot_provider STATIC
     src/copilot_accounts.cpp src/copilot_launcher.cpp src/copilot_initial_prompt.cpp
-    src/copilot_npm_native.cpp src/copilot_session.cpp src/copilot_usage.cpp src/copilot_usage_journal.cpp)
+    src/copilot_npm_native.cpp src/copilot_native_help.cpp src/copilot_session.cpp src/copilot_usage.cpp src/copilot_usage_journal.cpp)
 if(WIN32)
     target_link_libraries(copilot_provider PRIVATE shell32 ole32 uuid)
 endif()

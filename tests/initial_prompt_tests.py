@@ -111,6 +111,14 @@ def main():
         cold = copy.deepcopy(request)
         cold["launch_environment"]["effective_environment"]["COPILOT_FIXTURE_MODE"] = "cold"
         successful(adapter.invoke("launch-preparation", 3, "prepare", cold, deadline_ms=15000))
+        successful(adapter.invoke("launch-preparation", 3, "prepare", cold, deadline_ms=750))
+        # Replace the image with the same bytes and timestamps. A cached
+        # native capability belongs to the original file identity.
+        replacement = program.with_name("replacement" + program.suffix)
+        shutil.copy2(program, replacement)
+        os.replace(replacement, program)
+        retried = adapter.invoke("launch-preparation", 3, "prepare", cold, deadline_ms=750)
+        check(retried["status"] != "success", "a replacement binary must supply its own native feature proof")
 
         frozen = copy.deepcopy(request)
         frozen["launcher"]["script_body"] += " --no-auto-update"

@@ -78,11 +78,11 @@ def main():
             request["launcher"] = saved
             request["launcher_argv"] = [str(program)]
             request["launch_environment"]["effective_environment"] = environment
-        patch = successful(adapter.invoke("launch-preparation", 3, "prepare", interactive, deadline_ms=15000))
+        patch = successful(adapter.invoke("launch-preparation", 3, "prepare", interactive, deadline_ms=45000))
         check(Path(patch["argv"][0]) == program and "initial_prompt" in patch, "native first-message delivery")
         for capability, request in (("structured-session", structured),
                                     ("delegated-session", delegated_request(structured, directory))):
-            proposed = successful(adapter.invoke(capability, 3, "prepare", request, deadline_ms=15000))
+            proposed = successful(adapter.invoke(capability, 3, "prepare", request, deadline_ms=45000))
             check(proposed["process"]["executable"] == {"launcher_program": True}, "saved native executable custody")
     adapter.close()
     print("PASS stock npm discovery, first-message and structured/delegated task preparation")

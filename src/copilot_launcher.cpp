@@ -81,37 +81,6 @@ bool plan_then_autopilot_requested(const addon::Environment& environment)
     return normalized == "1" || normalized == "true" || normalized == "yes" || normalized == "on";
 }
 
-bool help_declares(std::string_view help, std::string_view option)
-{
-    while (!help.empty()) {
-        const auto end = help.find('\n');
-        const auto line = addon::trim(help.substr(0, end), addon::Launcher_whitespace::ASCII);
-        const auto position = line.find(option);
-        if (line.starts_with('-') && position != std::string::npos &&
-            (position == 0 || line[position - 1] == ' ' || line[position - 1] == ',') &&
-            (position + option.size() == line.size() || line[position + option.size()] == ' '))
-        {
-            return true;
-        }
-        if (end == std::string_view::npos) {
-            break;
-        }
-        help.remove_prefix(end + 1);
-    }
-    return false;
-}
-
-std::optional<addon::Probe_output> probe_help(
-    const std::string& program, const addon::Environment& environment,
-    std::string_view working_directory, addon::Invocation_context& context)
-{
-    // An installed Copilot extracts its runtime before handling --help on first use.
-    const auto timeout = std::min<std::int64_t>(
-        context.request().deadline_ms, addon::limits::k_launch_prepare_deadline_ms);
-    return addon::probe({program, "--no-auto-update", "--help"}, environment,
-        working_directory, static_cast<int>(timeout), context);
-}
-
 void discover(addon::Invocation_context& context)
 {
     addon::Contract_failure failure;

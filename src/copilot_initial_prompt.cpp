@@ -1,6 +1,7 @@
 #include "copilot_initial_prompt.h"
 
 #include "copilot_launcher.h"
+#include "copilot_native_help.h"
 
 #include "logonomic_cli_addon/launcher_utilities.h"
 #include "logonomic_cli_addon/package_source.h"
@@ -149,12 +150,12 @@ void prepare_initial_prompt(
         return;
     }
 
-    const auto help = probe_help(addon::path_to_utf8(*program), environment, request.working_directory, context);
+    const auto help = native_help(addon::path_to_utf8(*program), environment, request.working_directory, context);
     if (context.cancel_requested()) {
         context.fail(addon::Result_status::CANCELLED, "cancelled");
         return;
     }
-    if (!help || !help_declares(help->output, "--interactive") || !help_declares(help->output, "--no-auto-update")) {
+    if (!help || !help->first_prompt) {
         unavailable(context, "The installed Copilot did not establish native interactive-prompt support.");
         return;
     }

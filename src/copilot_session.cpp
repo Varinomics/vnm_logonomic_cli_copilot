@@ -2,6 +2,7 @@
 
 #include "copilot_accounts.h"
 #include "copilot_launcher.h"
+#include "copilot_native_help.h"
 
 #include "logonomic_cli_addon/capability_ids.h"
 #include "logonomic_cli_addon/package_source.h"
@@ -365,24 +366,20 @@ bool native_features(
     const Prepared_session& prepared, const addon::Session_launch_context& launch, bool delegated,
     addon::Invocation_context& context, const std::optional<addon::Delegated_model_selection>& selection = std::nullopt)
 {
-    const auto help = probe_help(prepared.program, prepared.environment, launch.working_directory, context);
+    const auto help = native_help(prepared.program, prepared.environment, launch.working_directory, context);
     if (context.cancel_requested()) {
         context.fail(addon::Result_status::CANCELLED, "cancelled");
         return false;
     }
-    if (!help || !help_declares(help->output, "--no-auto-update") || !help_declares(help->output, "--session-id") ||
-        !help_declares(help->output, "--output-format") || !help_declares(help->output, "--stream") ||
-        (delegated && (!help_declares(help->output, "--additional-mcp-config") ||
-                      !help_declares(help->output, "--allow-tool"))))
-    {
+    if (!help || !help->structured || (delegated && !help->delegated)) {
         unavailable(context, "The installed Copilot did not establish native task protocol support.");
         return false;
     }
-    if (selection && selection->model && !help_declares(help->output, "--model")) {
+    if (selection && selection->model && !help->model) {
         context.fail(addon::Result_status::UNAVAILABLE, addon::reason::k_model_selection_unavailable);
         return false;
     }
-    if (selection && selection->reasoning_effort && !help_declares(help->output, "--reasoning-effort")) {
+    if (selection && selection->reasoning_effort && !help->reasoning_effort) {
         context.fail(addon::Result_status::UNAVAILABLE, addon::reason::k_reasoning_effort_unavailable);
         return false;
     }
