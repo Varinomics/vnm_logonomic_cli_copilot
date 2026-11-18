@@ -64,8 +64,11 @@ std::optional<fs::path> native_dependency(
         {
             return std::nullopt;
         }
-        const auto executable = addon::resolve_program(addon::path_to_utf8(directory / binary), {}, {});
-        return executable && addon::native_image(*executable) ? executable : std::nullopt;
+        const auto exported = directory / binary;
+        const auto executable = addon::resolve_program(addon::path_to_utf8(exported), {}, {});
+        // npm can replace this export on upgrade. Verify its target, but
+        // keep the installed path and command name in the saved launcher.
+        return executable && addon::native_image(*executable) ? std::optional(exported) : std::nullopt;
     }
     return std::nullopt;
 }
