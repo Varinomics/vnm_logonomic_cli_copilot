@@ -303,7 +303,7 @@ Snapshot create_snapshot(const addon::Usage_scan_request& request, const fs::pat
             for (auto& old : load_page(accepted, index)) add_receipt(ledger, std::move(old));
         }
     }
-    scan_journals(profile, ledger, progress);
+    scan_journals(profile_io_path(profile), ledger, progress);
     const auto root = addon::usage_cache_io_path(addon::path_from_utf8(selection.candidate_root));
     std::uint64_t pages = 0;
     auto next = ledger.begin();
@@ -336,7 +336,7 @@ void scan(const addon::Usage_scan_request& request, addon::Invocation_context& c
     const auto profile = selected_profile_path(launch.account_context, launch.launcher, environment, invocation,
         launch.working_directory);
     require(profile.has_value(), "usage_profile_unavailable");
-    const auto history = *profile / "session-state";
+    const auto history = profile_io_path(*profile) / "session-state";
     const auto contains = [](const fs::path& parent, fs::path child) {
         if (!fs::exists(parent)) return false;
         for (;;) {

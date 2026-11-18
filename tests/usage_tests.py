@@ -168,6 +168,20 @@ def main():
         adapter = Adapter(sys.argv[1])
         try:
             exercise(adapter, program, directory, sys.argv[3])
+            if os.name == "nt":
+                plain = directory / "native profile"
+                spaced = directory / "native profile "
+                exact = Path("\\\\?\\" + str(spaced))
+                session = str(uuid.uuid4())
+                try:
+                    journal(exact, session, [receipt(session, 1)])
+                    journal(plain, session, [])
+                    source = request(adapter, program, directory, sys.argv[3], spaced)
+                    _, rows = all_pages(adapter, candidate(source, "exact-spaced"))
+                    check(len(rows) == 1, "the scanner reads receipts only from the exact spaced native profile")
+                finally:
+                    if exact.is_dir():
+                        shutil.rmtree(exact)
         finally:
             adapter.close()
 
