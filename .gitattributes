@@ -3,3 +3,7 @@
 *.h text eol=lf
 *.json text eol=lf
 *.py text eol=lf
+
+# Package exports preserve the committed artwork and upstream notice bytes.
+/package/assets/*.svg -text
+/package/notices/* -text
