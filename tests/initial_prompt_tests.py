@@ -34,6 +34,10 @@ def refused(adapter, request, label):
     check(result["status"] == "unavailable" and result["reason"] == "initial_prompt_unavailable", label)
 
 
+def same_command(actual, expected):
+    return os.path.samefile(actual[0], expected[0]) and actual[1:] == expected[1:]
+
+
 def mode_admission(adapter, request):
     # GitHub's CLI command reference documents enabled values and explicit
     # --mode precedence. Native Copilot 1.0.112 confirms case folding and
@@ -58,7 +62,7 @@ def mode_admission(adapter, request):
         explicit["launcher_argv"] += arguments
         explicit["launcher"]["script_body"] += " " + " ".join(arguments)
         patch = successful(adapter.invoke("launch-preparation", 3, "prepare", explicit))
-        check(patch["argv"][:-2] == explicit["launcher_argv"], "explicit interactive mode is preserved")
+        check(same_command(patch["argv"][:-2], explicit["launcher_argv"]), "explicit interactive mode is preserved")
         check(patch["environment"] == {"set": {}, "unset": []}, "explicit mode does not clear saved environment")
 
     for arguments in (["--mode", "plan"], ["--mode=autopilot"], ["--name", "interactive"]):
@@ -95,7 +99,8 @@ def main():
         shutil.copy2(sys.argv[2], program)
         request = request_for(program, directory, sys.argv[3])
         patch = successful(adapter.invoke("launch-preparation", 3, "prepare", request))
-        check(patch["argv"] == request["launcher_argv"] + ["--no-auto-update", "--interactive=" + request["initial_prompt"]["text"]],
+        expected = request["launcher_argv"] + ["--no-auto-update", "--interactive=" + request["initial_prompt"]["text"]]
+        check(same_command(patch["argv"], expected),
               "saved permission and model options survive first-message preparation")
         check(patch["initial_prompt"] == {
             "version": 1,
