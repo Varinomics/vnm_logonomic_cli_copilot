@@ -3,7 +3,7 @@
   "version": 1,
   "payload": {
     "display_name": "GitHub Copilot CLI",
-    "icon": {"light": "assets/terminal.svg", "dark": "assets/terminal.svg"},
+    "icon": {"light": "assets/github-copilot.svg", "dark": "assets/github-copilot-dark.svg"},
     "accent": {"light": "#6e40c9", "dark": "#a371f7"}
   }
 }

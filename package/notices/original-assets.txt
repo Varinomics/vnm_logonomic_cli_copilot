@@ -1,2 +1,0 @@
-assets/terminal.svg is an original generic terminal illustration for this add-on.
-It is not a GitHub or Copilot logo.

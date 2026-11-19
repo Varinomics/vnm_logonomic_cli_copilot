@@ -59,7 +59,10 @@ logonomic_cli_addon_package_platform(COPILOT_PLATFORM)
 set(COPILOT_EXECUTABLE_SUFFIX "${CMAKE_EXECUTABLE_SUFFIX}")
 configure_file(package/logonomic-cli-addon.json.in generated/logonomic-cli-addon.json @ONLY)
 logonomic_cli_addon_add_package(copilot_package logonomic.cli.copilot COPILOT_PACKAGE_DIRECTORY
-    ADAPTER copilot_adapter)
+    ADAPTER copilot_adapter
+    INDEX_ARGUMENTS
+        --third-party assets/github-copilot.svg notices/lobe_icons_mit.txt provenance/lobe_icons.json
+        --third-party assets/github-copilot-dark.svg notices/lobe_icons_mit.txt provenance/lobe_icons.json)
 
 if(LOGONOMIC_CLI_ADDON_EMBEDDED)
     return()

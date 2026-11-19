@@ -1,0 +1,12 @@
+{
+  "upstream": "https://github.com/lobehub/lobe-icons",
+  "snapshot": "9752d967494e48d8f83f2808feb2b0207bf70997",
+  "source_path": "packages/static-svg/icons/githubcopilot.svg",
+  "source_sha256": "bbc7fddc13448236e5edea8c399d2072dc40aa5da5bca07f7a2f412405c500a3",
+  "notice": "notices/lobe_icons_mit.txt",
+  "resources": [
+    "assets/github-copilot.svg",
+    "assets/github-copilot-dark.svg"
+  ],
+  "changes": "The supplied variants share the upstream path geometry. The package preserves their cropped viewBox and fills and omits browser layout styling for the host SVG subset."
+}
