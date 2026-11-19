@@ -2,7 +2,7 @@
 
 #include "copilot_accounts.h"
 #include "copilot_initial_prompt.h"
-#include "copilot_npm_native.h"
+#include "copilot_npm.h"
 
 #include "logonomic_cli_addon/launch_preparation.h"
 #include "logonomic_cli_addon/package_source.h"
@@ -103,8 +103,8 @@ void discover(addon::Invocation_context& context)
         candidate.is_default = true;
         candidate.evidence.set("source", addon::Json_value("path"));
         if (candidate.runner_key != addon::k_runner_direct) {
-            if (const auto native = npm_native_program(*program)) {
-                const auto path = addon::path_to_utf8(*native);
+            if (const auto npm = npm_program(*program); npm && npm->native) {
+                const auto path = addon::path_to_utf8(npm->path);
                 // This text is saved as a Direct launcher and must round-trip
                 // to exactly one path. Keep the shell launcher otherwise.
                 const auto script = "\"" + path + "\"";

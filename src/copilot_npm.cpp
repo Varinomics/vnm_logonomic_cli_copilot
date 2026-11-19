@@ -1,4 +1,4 @@
-#include "copilot_npm_native.h"
+#include "copilot_npm.h"
 
 #include "logonomic_cli_addon/json.h"
 #include "logonomic_cli_addon/launcher_utilities.h"
@@ -29,7 +29,7 @@ std::string member(const addon::Json_value* value, std::string_view key)
     return item && item->is_string() ? item->as_string() : std::string{};
 }
 
-std::optional<fs::path> native_dependency(
+std::optional<Npm_program> native_dependency(
     const fs::path& package, const addon::Json_value& wrapper, std::string_view platform)
 {
 #if defined(__aarch64__) || defined(_M_ARM64)
@@ -73,14 +73,17 @@ std::optional<fs::path> native_dependency(
         const auto executable = addon::resolve_program(addon::path_to_utf8(exported), {}, {});
         // npm can replace this export on upgrade. Verify its target, but
         // keep the installed path and command name in the saved launcher.
-        return executable && addon::native_image(*executable) ? std::optional(exported) : std::nullopt;
+        if (executable && addon::native_image(*executable)) {
+            return Npm_program{exported, true};
+        }
+        return std::nullopt;
     }
     return std::nullopt;
 }
 
 } // namespace
 
-std::optional<std::filesystem::path> npm_native_program(const std::filesystem::path& resolved_launcher)
+std::optional<Npm_program> npm_program(const std::filesystem::path& resolved_launcher)
 {
 #ifdef _WIN32
     const auto entry = addon::npm_node_shim_entry(resolved_launcher);
@@ -96,6 +99,24 @@ std::optional<std::filesystem::path> npm_native_program(const std::filesystem::p
     }
 #endif
     const auto package = loader.parent_path();
+    if (package.filename() != "copilot" || package.parent_path().filename() != "@github" ||
+        package.parent_path().parent_path().filename() != "node_modules")
+    {
+        return std::nullopt;
+    }
+    const auto wrapper = manifest(package);
+    const auto name    = addon::path_to_utf8(loader.filename());
+    if (!wrapper || member(&*wrapper, "name") != "@github/copilot" ||
+        member(wrapper->find("bin"), "copilot") != name)
+    {
+        return std::nullopt;
+    }
+    if (name == "index.js") {
+        return Npm_program{loader, false};
+    }
+    if (name != "npm-loader.js") {
+        return std::nullopt;
+    }
     for (const auto& component : package) {
         // A saved Direct launcher must survive ordinary npm package updates.
         // Other package managers can put a version in the store path.
@@ -103,21 +124,10 @@ std::optional<std::filesystem::path> npm_native_program(const std::filesystem::p
             return std::nullopt;
         }
     }
-    if (loader.filename() != "npm-loader.js" || package.filename() != "copilot" ||
-        package.parent_path().filename() != "@github" || package.parent_path().parent_path().filename() != "node_modules")
-    {
-        return std::nullopt;
-    }
     // The known npm loader delegates unchanged argv to the exported native
     // dependency. A custom or changed loader retains its normal shell launch.
     const auto code = addon::Directory_package_source(package).read("npm-loader.js", 16 * 1024, nullptr);
     if (!code || addon::to_hex(addon::Sha256::digest(*code)) != k_native_loader_digest) {
-        return std::nullopt;
-    }
-    const auto wrapper = manifest(package);
-    if (!wrapper || member(&*wrapper, "name") != "@github/copilot" ||
-        member(wrapper->find("bin"), "copilot") != "npm-loader.js")
-    {
         return std::nullopt;
     }
 #if defined(_WIN32)

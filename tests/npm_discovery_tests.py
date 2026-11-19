@@ -6,9 +6,56 @@ import shutil
 import sys
 import tempfile
 
+from accounts_tests import profile
 from initial_prompt_tests import request_for as prompt_request
 from launcher_protocol_tests import Adapter, check, launcher, successful
 from session_tests import delegated_request, request_for as task_request
+from usage_tests import candidate as cache_candidate, scan
+
+
+def javascript_profiles(adapter, candidate, directory, platform, environment):
+    runner = "cmd" if os.name == "nt" else "bash"
+    check(candidate["runner_key"] == runner and candidate["script_body"] == "copilot",
+          "the JavaScript CLI retains its ordinary shell launcher")
+    saved = launcher("copilot", runner)
+    argv = ["cmd.exe", "/k", "copilot"] if os.name == "nt" else [
+        "bash", "-c" if platform.startswith("linux-") else "-lc", "copilot"]
+    request = {"launcher": saved, "launcher_argv": argv,
+               "launch_environment": {"platform": platform, "effective_environment": environment},
+               "working_directory": directory, "title_instruction": "", "declared_assets": []}
+    root = Path(directory)
+    # The JavaScript CLI's config.json writer ignores COPILOT_HOME.
+    for parent, expected in [(None, root), ("relative", root / "relative"), (str(root / "xdg"), root / "xdg")]:
+        if parent is not None:
+            environment["XDG_CONFIG_HOME"] = parent
+        config = expected / ".copilot"
+        config.mkdir(parents=True)
+        account = profile(adapter, request, root)
+        check(Path(account["profile_path"]) == config and account["status"] == "available",
+              "JavaScript CLI config directory from home or XDG_CONFIG_HOME")
+        selected = {"version": 2, "adapter_account_key": account["adapter_account_key"],
+                    "profile_path": account["profile_path"]}
+        patch = successful(adapter.invoke("launch-preparation", 3, "prepare", dict(request, account_context=selected)))
+        check(patch["account_context"] == selected and "argv" not in patch, "ordinary shell launch is preserved")
+    store = root / "cache-store"
+    store.mkdir()
+    usage = dict(request, account_context=selected, profile_storage={"version": 1, "root": str(store)},
+                 mode="incremental")
+    del usage["title_instruction"]
+    result = scan(adapter, cache_candidate(usage, "candidate"))
+    check(result["status"] == "unavailable" and result["reason"] == "usage_records_unavailable",
+          "older npm CLI has no native usage receipts")
+    request["launcher"] = launcher("copilot --config-dir custom", runner)
+    reply = adapter.invoke("accounts", 2, "discover", {
+        "launcher": request["launcher"], "launch_environment": request["launch_environment"],
+        "normalization_directory": directory, "default_home_fallback": directory})
+    check(reply["status"] == "unavailable" and "XDG_CONFIG_HOME" in reply["message"],
+          "unsupported native option explains how the JavaScript CLI selects its profile")
+    reply = adapter.invoke("accounts", 2, "discover", {
+        "launcher": launcher("XDG_CONFIG_HOME=custom copilot", "bash"), "launch_environment": request["launch_environment"],
+        "normalization_directory": directory, "default_home_fallback": directory})
+    check(reply["status"] == "unavailable" and "inline" in reply["message"] and "environment settings" in reply["message"],
+          "inline Bash assignment explains where to move it")
 
 
 def main():
@@ -29,6 +76,11 @@ def main():
             "ambient_environment": {"PATH": str(npm_bin)}, "default_home_fallback": directory, "platform": platform,
         }))
         candidate, = discovery["candidates"]
+        if sys.argv[4:] == ["--javascript"]:
+            javascript_profiles(adapter, candidate, directory, platform, environment)
+            adapter.close()
+            print("PASS JavaScript npm launcher and profile discovery")
+            return
         check(candidate["runner_key"] == "direct" and candidate["default"], "stock npm installation selects Direct")
         check(candidate["evidence"]["source"] == "npm-native-package", "selection uses the installed platform package")
         script = candidate["script_body"]

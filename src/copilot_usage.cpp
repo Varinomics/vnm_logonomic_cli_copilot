@@ -333,10 +333,15 @@ void scan(const addon::Usage_scan_request& request, addon::Invocation_context& c
     const auto& launch = request.context;
     const auto& environment = *launch.launch_environment;
     const auto invocation = addon::literal_launcher_invocation(launch.launcher, environment.platform_id, launch.launcher_argv);
-    const auto profile = selected_profile_path(launch.account_context, launch.launcher, environment, invocation,
+    const auto profile = selected_profile(launch.account_context, launch.launcher, environment, invocation,
         launch.working_directory);
     require(profile.has_value(), "usage_profile_unavailable");
-    const auto history = *profile / "session-state";
+    if (!profile->native_cli) {
+        context.fail(addon::Result_status::UNAVAILABLE, "usage_records_unavailable",
+            "This Copilot CLI installation does not record token usage history.");
+        return;
+    }
+    const auto history = profile->directory / "session-state";
     const auto contains = [](const fs::path& parent, fs::path child) {
         const auto parent_io = profile_io_path(parent);
         if (!fs::exists(parent_io)) return false;
@@ -366,11 +371,11 @@ void scan(const addon::Usage_scan_request& request, addon::Invocation_context& c
         require(parsed.ec == std::errc{} && std::to_string(index) == cursor.substr(0, colon) && index > 0,
                 "usage_cursor_invalid");
         snapshot = open_snapshot({request.cache_selection->candidate_root, *request.snapshot_id, cursor.substr(colon + 1)},
-            request, *profile, true, progress);
+            request, profile->directory, true, progress);
         require(index < snapshot.page_count, "usage_cursor_invalid");
     }
     else {
-        snapshot = create_snapshot(request, *profile, progress);
+        snapshot = create_snapshot(request, profile->directory, progress);
     }
     addon::Usage_scan_page page;
     page.scope.observed_at_ms = snapshot.observed_at;

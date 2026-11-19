@@ -1,7 +1,7 @@
 #include "copilot_accounts.h"
 
 #include "copilot_launcher.h"
-#include "copilot_npm_native.h"
+#include "copilot_npm.h"
 
 #include "logonomic_cli_addon/package_source.h"
 #include "logonomic_cli_addon/sha256.h"
@@ -19,6 +19,7 @@
 #include <filesystem>
 #include <memory>
 #include <system_error>
+#include <utility>
 
 namespace copilot {
 namespace {
@@ -46,7 +47,22 @@ std::string operating_system_home()
 #endif
 }
 
-bool attributable_launcher(
+enum class Launcher_type
+{
+    UNRECOGNIZED,
+    MISSING,
+    NATIVE,
+    NPM_JAVASCRIPT,
+};
+
+struct Profile_lookup
+{
+    bool native_cli = false;
+    const char* failure_message = "Logonomic could not identify the Copilot installation used by this launcher. "
+        "Point a Direct launcher at the standalone GitHub Copilot CLI executable.";
+};
+
+Launcher_type launcher_type(
     const std::string& word, addon::Environment environment, std::string_view directory,
     [[maybe_unused]] std::string_view runner)
 {
@@ -71,18 +87,22 @@ bool attributable_launcher(
         const auto path = addon::path_from_utf8(word);
         if (path.has_parent_path() && !path.has_extension()) {
             addon::set_environment(environment, "PATH", addon::path_to_utf8(path.parent_path()));
-            return attributable_launcher(addon::path_to_utf8(path.filename()), std::move(environment), directory, "");
+            return launcher_type(addon::path_to_utf8(path.filename()), std::move(environment), directory, "");
         }
     }
 #endif
     const auto program = addon::resolve_program(word, environment, directory);
     if (!program) {
-        return false;
+        return Launcher_type::MISSING;
     }
     if (addon::native_image(*program)) {
-        return true;
+        return Launcher_type::NATIVE;
     }
-    return npm_native_program(*program).has_value();
+    const auto npm = npm_program(*program);
+    if (!npm) {
+        return Launcher_type::UNRECOGNIZED;
+    }
+    return npm->native ? Launcher_type::NATIVE : Launcher_type::NPM_JAVASCRIPT;
 }
 
 std::optional<fs::path> absolute_argument(
@@ -118,7 +138,7 @@ std::optional<fs::path> absolute_argument(
 std::optional<fs::path> profile_path(
     const addon::Launcher_request& launcher, const addon::Launch_environment& launch,
     const std::optional<addon::Launcher_invocation>& invocation, std::string_view directory,
-    std::string_view fallback)
+    std::string_view fallback, Profile_lookup& lookup)
 {
     if (launch.platform_id != addon::host_platform_id() || !invocation || invocation->argv.empty() ||
         !launcher_invocation(launcher, launch.platform_id))
@@ -127,7 +147,15 @@ std::optional<fs::path> profile_path(
     }
     const auto environment = addon::environment_pairs(launch.effective_environment);
     const auto base = addon::path_from_utf8(directory);
-    if (!base.is_absolute() || !attributable_launcher(invocation->argv.front(), environment, directory, launcher.runner_key)) {
+    if (!base.is_absolute()) {
+        return std::nullopt;
+    }
+    const auto type = launcher_type(invocation->argv.front(), environment, directory, launcher.runner_key);
+    if (type == Launcher_type::MISSING) {
+        lookup.failure_message = "The saved launcher could not find Copilot CLI. Check the executable path in the launcher.";
+        return std::nullopt;
+    }
+    if (type == Launcher_type::UNRECOGNIZED) {
         return std::nullopt;
     }
 #ifdef _WIN32
@@ -139,6 +167,35 @@ std::optional<fs::path> profile_path(
         home = fallback.empty() ? operating_system_home() : std::string(fallback);
     }
     const auto native_home = addon::path_from_utf8(home);
+    if (type == Launcher_type::NPM_JAVASCRIPT) {
+        // This npm CLI locates its configuration under XDG_CONFIG_HOME or
+        // Node's home. Shell-local assignments aren't in the frozen environment.
+        const auto& args = invocation->argv;
+        const auto end   = std::find(args.begin() + 1, args.end(), "--");
+        const auto native_option = [](std::string_view arg) {
+            return arg == "--config-dir" || arg.starts_with("--config-dir=") || arg.starts_with("-C");
+        };
+        if (!invocation->environment_names.empty()) {
+            lookup.failure_message = "Move the inline environment assignments from the Copilot command "
+                "to the launcher's environment settings so Logonomic can identify its profile.";
+            return std::nullopt;
+        }
+        if (std::any_of(args.begin() + 1, end, native_option)) {
+            lookup.failure_message = "Remove --config-dir or -C from the launcher. This npm Copilot CLI uses "
+                "~/.copilot by default. To choose another location, set XDG_CONFIG_HOME to the parent of .copilot.";
+            return std::nullopt;
+        }
+        lookup.failure_message = "Logonomic could not locate this npm Copilot CLI's configuration directory. "
+            "Check the home directory and any XDG_CONFIG_HOME setting in the launcher environment.";
+        const auto parent = addon::environment_value(environment, "XDG_CONFIG_HOME");
+        if (!parent.empty()) {
+            return absolute_argument(parent + "/.copilot", base, native_home, false);
+        }
+        return addon::normalized_resume_directory(addon::path_to_utf8(native_home / ".copilot"));
+    }
+    lookup.native_cli = true;
+    lookup.failure_message = "Check the launcher's --config-dir and -C options. "
+        "Use a full path for the Copilot configuration directory.";
     auto cwd = base;
     std::optional<std::string_view> config;
     bool changing_session_directory = false;
@@ -246,11 +303,17 @@ void accounts(addon::Invocation_context& context)
         return;
     }
     const auto invocation = launcher_invocation(input->launcher, input->launch_environment.platform_id);
+    Profile_lookup lookup;
     const auto path = profile_path(input->launcher, input->launch_environment, invocation, input->normalization_directory,
-        input->default_home_fallback);
-    if (!path || addon::path_to_utf8(*path).size() > addon::limits::k_max_start_absolute_path_bytes) {
+        input->default_home_fallback, lookup);
+    if (!path) {
+        context.fail(addon::Result_status::UNAVAILABLE, "copilot_profile_unavailable", lookup.failure_message);
+        return;
+    }
+    const auto text = addon::path_to_utf8(*path);
+    if (text.size() > addon::limits::k_max_start_absolute_path_bytes) {
         context.fail(addon::Result_status::UNAVAILABLE, "copilot_profile_unavailable",
-            "The saved Copilot invocation does not establish its native configuration directory.");
+            "The Copilot profile path is too long for Logonomic. Choose a shorter profile path.");
         return;
     }
     const auto key = profile_key(*path);
@@ -262,24 +325,24 @@ void accounts(addon::Invocation_context& context)
         context.succeed(addon::encode_account_resolution({key}));
         return;
     }
-    const auto text = addon::path_to_utf8(*path);
     context.succeed(addon::encode_accounts({{key, addon::account_display_name(text), availability(*path), text}}));
 }
 
-std::optional<fs::path> selected_profile_path(
+std::optional<Source_profile> selected_profile(
     const std::optional<addon::Account_context>& account,
     const addon::Launcher_request& launcher, const addon::Launch_environment& environment,
     const std::optional<addon::Launcher_invocation>& invocation, std::string_view working_directory)
 {
-    const auto path = profile_path(launcher, environment, invocation, working_directory, {});
-    if (!account) {
-        return path;
+    Profile_lookup lookup;
+    const auto path = profile_path(launcher, environment, invocation, working_directory, {}, lookup);
+    if (!path) {
+        return std::nullopt;
     }
-    if (path && profile_key(*path) == account->adapter_account_key &&
+    if (!account || (profile_key(*path) == account->adapter_account_key &&
         (account->version == 1 || (account->profile_path &&
-            addon::same_native_account_profile(addon::path_from_utf8(*account->profile_path), *path))))
+            addon::same_native_account_profile(addon::path_from_utf8(*account->profile_path), *path)))))
     {
-        return path;
+        return Source_profile{*path, lookup.native_cli};
     }
     return std::nullopt;
 }
@@ -289,7 +352,7 @@ bool accept_account(
     const addon::Launcher_request& launcher, const addon::Launch_environment& environment,
     const std::optional<addon::Launcher_invocation>& invocation, std::string_view working_directory)
 {
-    if (!account || selected_profile_path(account, launcher, environment, invocation, working_directory)) {
+    if (!account || selected_profile(account, launcher, environment, invocation, working_directory)) {
         return true;
     }
     context.fail(addon::Result_status::UNAVAILABLE, "account_profile_mismatch",

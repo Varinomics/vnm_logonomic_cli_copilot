@@ -12,13 +12,16 @@ Copilot retains control of authentication, tool permissions and its terminal UI.
 
 ## Copilot profiles
 
-Logonomic identifies the Copilot configuration and session directory selected
-by a saved launcher. Copilot defaults to `~/.copilot`. Set `COPILOT_HOME` in
-the launcher environment to select another profile, or retain a saved
-`--config-dir` argument. The argument takes precedence. Task and interactive
+Logonomic identifies the Copilot configuration directory selected by a saved
+launcher. Copilot defaults to `~/.copilot`. With the native CLI,
+set `COPILOT_HOME` in the launcher environment to select another profile, or
+retain a saved `--config-dir` argument. The argument takes precedence.
+For npm installations that run the JavaScript CLI, Logonomic follows
+`XDG_CONFIG_HOME/.copilot` when `XDG_CONFIG_HOME` is set. The JavaScript CLI
+uses `XDG_STATE_HOME` separately for session data. Task and interactive
 preparation check the selected directory before acknowledging the account.
 Copilot manages sign-in and credentials independently of this profile, and
-`COPILOT_CACHE_HOME` selects its separate runtime cache.
+`COPILOT_CACHE_HOME` selects the native CLI's runtime cache.
 
 ## Interactive continuation
 

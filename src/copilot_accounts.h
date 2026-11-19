@@ -8,7 +8,13 @@ namespace copilot {
 
 std::filesystem::path profile_io_path(const std::filesystem::path& profile);
 
-std::optional<std::filesystem::path> selected_profile_path(
+struct Source_profile
+{
+    std::filesystem::path directory;
+    bool native_cli;
+};
+
+std::optional<Source_profile> selected_profile(
     const std::optional<logonomic::cli_addon::Account_context>& account,
     const logonomic::cli_addon::Launcher_request& launcher,
     const logonomic::cli_addon::Launch_environment& environment,
