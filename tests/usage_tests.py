@@ -162,7 +162,7 @@ def exercise(adapter, program, directory, platform):
 
 def main():
     with tempfile.TemporaryDirectory(prefix="copilot-usage-") as root:
-        directory = Path(root)
+        directory = Path(root).resolve()
         program = directory / ("copilot.exe" if os.name == "nt" else "copilot")
         shutil.copy2(sys.argv[2], program)
         adapter = Adapter(sys.argv[1])

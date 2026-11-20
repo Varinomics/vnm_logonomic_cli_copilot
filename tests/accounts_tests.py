@@ -195,7 +195,7 @@ def main():
     adapter = Adapter(sys.argv[1])
     try:
         with tempfile.TemporaryDirectory(prefix="copilot-accounts-") as temporary:
-            directory = Path(temporary)
+            directory = Path(temporary).resolve()
             program = directory / ("copilot.exe" if os.name == "nt" else "copilot")
             shutil.copy2(sys.argv[2], program)
             source_routes(adapter, program, directory, sys.argv[3])
@@ -204,7 +204,7 @@ def main():
                 windows_profile_spelling(adapter, program, directory, sys.argv[3])
         if len(sys.argv) == 5:
             with tempfile.TemporaryDirectory(prefix="copilot-native-profiles-") as temporary:
-                source_routes(adapter, Path(sys.argv[4]).resolve(), Path(temporary), sys.argv[3], native=True)
+                source_routes(adapter, Path(sys.argv[4]).resolve(), Path(temporary).resolve(), sys.argv[3], native=True)
     finally:
         adapter.close()
     print("PASS Copilot account profiles")
