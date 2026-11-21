@@ -79,7 +79,7 @@ int main()
 {
     addon::Adapter_runtime_options options;
     options.adapter_name    = "copilot-addon";
-    options.adapter_version = "1.0.0";
+    options.adapter_version = LOGONOMIC_CLI_ADDON_ADAPTER_VERSION;
     options.capabilities = {
         {addon::k_presentation_capability_id, addon::k_presentation_version},
         {addon::k_accounts_capability_id, addon::k_accounts_launcher_version},
@@ -92,7 +92,7 @@ int main()
         {addon::k_structured_session_capability_id, addon::k_structured_session_version},
         {addon::k_delegated_session_capability_id, addon::k_delegated_session_version},
         {addon::k_delegated_model_selection_capability_id, addon::k_delegated_model_selection_version},
-        {"structured-model-observation", addon::k_model_state_version},
+        {addon::k_structured_model_observation_capability_id, addon::k_structured_model_observation_version},
     };
     addon::Adapter_runtime runtime(std::move(options));
     runtime.set_invoke_handler(invoke);

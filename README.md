@@ -106,10 +106,8 @@ terminal, and its documented hooks do not establish which one is foreground.
 
 ## Build and install
 
-Build with CMake 3.25 or newer and a C++20 compiler. Linux packaging also
-requires Python 3.11 or newer, `patchelf`, binutils, and the Debian or Ubuntu
-package metadata and copyright notices for the installed compiler runtimes.
-The SDK uses that metadata to record the bundled runtime's source provenance.
+Build the package with CMake and a C++20 compiler. On Linux, install the SDK's
+[Linux packaging prerequisites](https://github.com/Varinomics/vnm_logonomic_cli_addon/blob/master/sdk/logonomic_cli_addon_sdk/docs/package_contract.md#linux-native-runtime-deployment).
 
 ```sh
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release

@@ -56,6 +56,7 @@ target_include_directories(copilot_provider PUBLIC src)
 target_link_libraries(copilot_provider PUBLIC logonomic_cli_addon_sdk::sdk)
 copilot_target(copilot_provider)
 add_executable(copilot_adapter src/adapter.cpp)
+target_compile_definitions(copilot_adapter PRIVATE LOGONOMIC_CLI_ADDON_ADAPTER_VERSION="${PROJECT_VERSION}")
 target_link_libraries(copilot_adapter PRIVATE copilot_provider)
 copilot_target(copilot_adapter)
 
