@@ -121,6 +121,7 @@ For a local SDK, pass `-DLOGONOMIC_CLI_ADDON_SDK_SOURCE=/path/to/sdk/logonomic_c
 The [contributor guide](https://github.com/Varinomics/vnm_logonomic_cli_addon/blob/master/CONTRIBUTING.md)
 covers local package checks. Open provider pull requests in
 [the Copilot repository](https://github.com/Varinomics/vnm_logonomic_cli_copilot/pulls).
+See the [repository license](LICENSE) for the terms covering Varinomics code.
 
 The npm integration test exercises the installed Copilot shim. Supply the npm
 bin directory and the adapter built for that platform. For a native npm package
