@@ -112,23 +112,25 @@ package metadata and copyright notices for the installed compiler runtimes.
 The SDK uses that metadata to record the bundled runtime's source provenance.
 
 ```sh
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
-  -DLOGONOMIC_CLI_ADDON_SDK_SOURCE=/path/to/logonomic/sdk/logonomic_cli_addon_sdk
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --config Release --parallel
 ctest --test-dir build -C Release --output-on-failure
 cmake --install build --config Release --prefix /path/to/new/package-export
 ```
 
-Without the source override, CMake fetches the SDK from Logonomic's `master`
-branch, which requires access to that repository. The SDK is a standalone
-standard-library implementation; building this add-on does not build Qt or the
-desktop application.
+CMake fetches the SDK from the `master` branch of `Varinomics/vnm_logonomic_cli_addon`.
+For a local SDK, pass `-DLOGONOMIC_CLI_ADDON_SDK_SOURCE=/path/to/sdk/logonomic_cli_addon_sdk`.
+The [contributor guide](https://github.com/Varinomics/vnm_logonomic_cli_addon/blob/master/CONTRIBUTING.md)
+covers local package checks. Open provider pull requests in
+[the Copilot repository](https://github.com/Varinomics/vnm_logonomic_cli_copilot/pulls).
 
-With the official npm package installed, exercise its normal discovery and
-native preparation using the npm bin directory containing the Copilot shim:
+The npm integration test exercises the installed Copilot shim. Supply the npm
+bin directory and the adapter built for that platform. For a native npm package
+use the default mode. For an installation with the official JavaScript entry
+point, use `--javascript` to check profile selection and the saved shell command.
 
 ```sh
-python tests/npm_discovery_tests.py /path/to/copilot_adapter linux-x86_64 /path/to/node_modules/.bin
+python tests/npm_discovery_tests.py build/copilot_adapter linux-x86_64 /path/to/node_modules/.bin --javascript
 ```
 
 The exported `logonomic.cli.copilot` directory is the complete package. Install
