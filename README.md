@@ -41,6 +41,22 @@ input handling can interpret or trim them. Shell launchers and script wrappers
 continue to work for ordinary launches; they do not attest initial-message
 delivery. Feature detection does not impose a Copilot version ceiling.
 
+## Text authoring
+
+Hosts supporting `authoring-session@1` can use a Direct Copilot launcher to
+answer a workflow question. The adapter starts the selected native CLI's SDK
+stdio server, opens a fresh session with configuration discovery disabled and
+an empty tool list, and sends `session.ui.ephemeralQuery`. Copilot defines this
+operation as a no-tools model query. The host supplies previous turns and the
+current workflow. The adapter returns the answer from that query's RPC response
+after the runtime acknowledges cleanup.
+
+The launcher can select the Copilot configuration directory, model and
+reasoning effort. Preparation checks the standalone CLI version (1.0.112 or
+later). Each connection negotiates SDK protocol 3 or 4 before creating a
+session. The legacy JavaScript-only CLI and VS Code launcher shim do not
+provide this standalone protocol.
+
 ## Implementation tasks
 
 Save a Direct launcher pointing at the native Copilot executable. Discovery

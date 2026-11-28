@@ -1,0 +1,12 @@
+{
+  "capability_id": "authoring-session",
+  "version": 1,
+  "payload": {
+    "environment_names": [
+      "COPILOT_HOME", "COPILOT_CACHE_HOME", "XDG_CACHE_HOME", "NoDefaultCurrentDirectoryInExePath",
+      "COPILOT_MODEL", "COPILOT_GH_HOST", "GH_HOST", "GH_CONFIG_DIR",
+      "COPILOT_GITHUB_TOKEN", "GH_TOKEN", "GITHUB_TOKEN",
+      "SystemRoot", "WINDIR", "TEMP", "TMP"
+    ]
+  }
+}

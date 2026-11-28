@@ -1,4 +1,5 @@
 #include "copilot_accounts.h"
+#include "copilot_authoring.h"
 #include "copilot_usage.h"
 #include "copilot_launcher.h"
 #include "copilot_session.h"
@@ -64,6 +65,18 @@ void invoke(addon::Invocation_context& context)
         }
         return;
     }
+    if (request.capability.capability_id == addon::k_authoring_session_capability_id) {
+        if (request.operation == addon::k_prepare_operation) {
+            copilot::prepare_authoring(context);
+        }
+        else if (request.operation == addon::k_inspect_operation) {
+            copilot::inspect_authoring(context);
+        }
+        else {
+            context.reject_unknown_operation();
+        }
+        return;
+    }
     if (request.capability.capability_id == addon::k_delegated_session_capability_id &&
         request.operation == addon::k_prepare_operation)
     {
@@ -90,6 +103,7 @@ int main()
         {addon::k_launch_preparation_capability_id, addon::k_launch_preparation_execution_version},
         {addon::k_interactive_initial_prompt_capability_id, addon::k_interactive_initial_prompt_version},
         {addon::k_structured_session_capability_id, addon::k_structured_session_version},
+        {addon::k_authoring_session_capability_id, addon::k_authoring_session_version},
         {addon::k_delegated_session_capability_id, addon::k_delegated_session_version},
         {addon::k_delegated_model_selection_capability_id, addon::k_delegated_model_selection_version},
         {addon::k_structured_model_observation_capability_id, addon::k_structured_model_observation_version},

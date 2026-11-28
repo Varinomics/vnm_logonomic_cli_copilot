@@ -1,6 +1,7 @@
 #include "copilot_session.h"
 
 #include "copilot_accounts.h"
+#include "copilot_authoring.h"
 #include "copilot_launcher.h"
 #include "copilot_native_help.h"
 
@@ -305,6 +306,10 @@ std::optional<Session_state> decode_state(std::string_view bytes)
 std::optional<Prepared_session> prepare_session(
     const addon::Session_launch_context& launch, std::string_view prompt, addon::Invocation_context& context)
 {
+    if (!launch.launch_environment) {
+        unavailable(context, "Copilot needs the launcher's account environment.");
+        return std::nullopt;
+    }
     const auto trimmed_prompt = trim_native_whitespace(prompt);
     if (trimmed_prompt.empty() || trimmed_prompt.starts_with('/') ||
         prompt.find('\0') != std::string_view::npos || !addon::is_valid_utf8(prompt))
@@ -333,7 +338,7 @@ std::optional<Prepared_session> prepare_session(
         invocation->argv.front(), prepared.environment, launch.working_directory);
     if (!program || !addon::native_image(*program)) {
         context.fail(addon::Result_status::UNAVAILABLE, addon::reason::k_launcher_program_unavailable,
-            "A native Copilot executable is required for implementation tasks.");
+            "This task requires a native Copilot executable.");
         return std::nullopt;
     }
     prepared.program = addon::path_to_utf8(*program);
@@ -749,17 +754,21 @@ std::string inspect_output(
     return {};
 }
 
-} // namespace
-
-void prepare_structured(addon::Invocation_context& context)
+void prepare_one_shot(addon::Invocation_context& context, bool authoring)
 {
     addon::Contract_failure failure;
-    const auto request = addon::decode_structured_prepare_request(context.request().payload, &failure);
+    const auto request = authoring ? addon::decode_authoring_prepare_request(context.request().payload, &failure) :
+        addon::decode_structured_prepare_request(context.request().payload, &failure);
     if (!request) {
-        reject(context, failure);
+        if (authoring && failure.reason_code == addon::reason::k_purpose_unavailable) {
+            context.fail(addon::Result_status::UNAVAILABLE, failure.reason_code, failure.detail);
+        }
+        else {
+            reject(context, failure);
+        }
         return;
     }
-    if (!implementation(request->purpose, context)) {
+    if (!authoring && !implementation(request->purpose, context)) {
         return;
     }
     auto prepared = prepare_session(request->context, request->prompt, context);
@@ -768,7 +777,24 @@ void prepare_structured(addon::Invocation_context& context)
     }
     addon::Structured_prepare_result result;
     result.process = prepared->process;
-    result.inspection = {true, encode_state(prepared->state), false};
+    if (authoring) {
+        if (!configure_authoring(result, *request, request->context.launcher_argv, prepared->state.session_id)) {
+            unavailable(context, "This launcher cannot supply a text-only Copilot session.");
+            return;
+        }
+        if (!supports_authoring(prepared->program, prepared->environment, request->context.working_directory, context)) {
+            if (context.cancel_requested()) {
+                context.fail(addon::Result_status::CANCELLED, "cancelled");
+            }
+            else {
+                unavailable(context, "Workflow authoring requires the standalone Copilot CLI 1.0.112 or later.");
+            }
+            return;
+        }
+    }
+    else {
+        result.inspection = {true, encode_state(prepared->state), false};
+    }
     result.profile_storage = request->context.profile_storage;
     result.account_context = request->context.account_context;
     const auto payload = addon::encode_structured_prepare_result(result);
@@ -778,9 +804,21 @@ void prepare_structured(addon::Invocation_context& context)
         context.fail(addon::Result_status::UNAVAILABLE, failure.reason_code, failure.detail);
         return;
     }
-    if (native_features(*prepared, request->context, false, context)) {
+    if (authoring || native_features(*prepared, request->context, false, context)) {
         context.succeed(payload);
     }
+}
+
+} // namespace
+
+void prepare_structured(addon::Invocation_context& context)
+{
+    prepare_one_shot(context, false);
+}
+
+void prepare_authoring(addon::Invocation_context& context)
+{
+    prepare_one_shot(context, true);
 }
 
 void prepare_delegated(addon::Invocation_context& context)
